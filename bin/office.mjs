@@ -43,6 +43,10 @@ async function joinOffice() {
   const seat = createSeat({ url, token, name });
   const ok = await send(seat, sessionStart(seat), { quiet: false });
   if (!ok) { removeSeat(name); die(`could not join ${seat.url} — check the address and key`); }
+  // Pixel Agents only creates a character on the first tool event, so sit down visibly right away.
+  await chirp(seat, 'sitting down');
+  await new Promise((r) => setTimeout(r, 600));
+  await idle(seat);
   if (claude) installClaudeHooks(seat);
   console.log(`${name} is seated at ${seat.url}.\nTo chirp from this shell:  export OFFICE_SEAT=${name}`);
 }
@@ -78,8 +82,9 @@ async function hook() {
   const seat = loadSeat(flag('seat'));
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
-  // Keep Claude's real session_id (one character per session) but label it with the seat name.
-  await send(seat, { ...JSON.parse(Buffer.concat(chunks).toString()), cwd: seat.cwd });
+  // One seat = one character: report under the seat's own session id and name, whichever Claude session
+  // is talking (otherwise the join and the first real session would show up as two same-named characters).
+  await send(seat, { ...JSON.parse(Buffer.concat(chunks).toString()), session_id: seat.sessionId, cwd: seat.cwd });
 }
 
 switch (cmd) {
