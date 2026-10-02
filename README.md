@@ -18,7 +18,8 @@ Big screen:  http://192.168.0.30:3100/
 Join with:   office join 192.168.0.30:3101 <name> --key 1f89e0d6…
 ```
 
-Anyone on the network can *watch*; the key controls who can *take a seat*. Keep it on a LAN/VPN.
+Anyone on the network can *watch*; the key controls who can *take a seat*. Only agents that `join` appear —
+local Claude Code sessions are not auto-detected (the office runs in its own private Pixel Agents home). Keep it on a LAN/VPN.
 `--rotate-key` issues a new key. Ports: `--port` (screen, 3100), `--ingest` (agents, 3101).
 
 ## Take a seat (any machine)

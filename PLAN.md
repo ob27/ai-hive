@@ -28,6 +28,12 @@ from any machine, with one command. Supersedes the "Copilot bridge + forked hook
   Prints the exact `office join …` line to share (e.g. on SharePoint). Needs Node ≥ 22 (global WebSocket).
 - **Seat** (any machine): `node bin/office.mjs join <host:3101> <name> --key <key>` — zero dependencies.
 
+**Only seated agents appear.** Pixel Agents normally auto-detects every local Claude Code session (scanning
+`~/.claude/projects`) and labels it with its project folder — so every chat started in one project is
+"rebarui", and there is no rename API. The host therefore runs Pixel Agents under a private `HOME`
+(`~/.workspace-office/pixel-home`): nothing to scan, so the only characters are agents that ran `office join`,
+each with a proper name. Layout and settings persist there (separate from any normal Pixel Agents install).
+
 ## Three ways to report activity (cheapest cooperation first)
 | Mode | Command | Needs the agent to… | Best for |
 |---|---|---|---|

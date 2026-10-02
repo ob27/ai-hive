@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
@@ -8,6 +8,11 @@ import { join } from 'node:path';
 const PIXEL_AGENTS = 'pixel-agents@1.4.1';
 const dir = join(homedir(), '.workspace-office');
 const hostFile = join(dir, 'host.json');
+
+// Pixel Agents auto-detects every local Claude Code session by scanning ~/.claude/projects and labels each
+// one with its project folder. We want only agents that `office join`, with proper names, so the host runs
+// Pixel Agents under a private home directory: nothing to scan, nothing auto-detected, layout/settings kept.
+const paHome = join(dir, 'pixel-home');
 
 /** The shared key is what the host hands to CLI users. It is stable across restarts (unlike
  *  Pixel Agents' own per-boot token, which never leaves this machine). */
@@ -23,7 +28,7 @@ const lanIp = () => Object.values(networkInterfaces()).flat().find((i) => i && i
 
 // Pixel Agents registers {port, token} under ~/.pixel-agents/servers/ on every boot.
 function pixelAgentsToken(port) {
-  const d = join(homedir(), '.pixel-agents', 'servers');
+  const d = join(paHome, '.pixel-agents', 'servers');
   try {
     for (const f of readdirSync(d)) {
       const reg = JSON.parse(readFileSync(join(d, f), 'utf8'));
@@ -46,7 +51,7 @@ async function waitForToken(port, ms = 60000) {
 // Seats are only adopted when "Watch All Sessions" is on; flip it so hosts don't have to.
 function enableWatchAll(port, token) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${token}`, { headers: { origin: `http://127.0.0.1:${port}` } });
-  ws.onopen = () => { ws.send(JSON.stringify({ type: 'setWatchAllSessions', enabled: true })); setTimeout(() => ws.close(), 500); };
+  ws.onopen = () => { for (const type of ['setWatchAllSessions', 'setAlwaysShowLabels']) ws.send(JSON.stringify({ type, enabled: true })); setTimeout(() => ws.close(), 500); };
   ws.onerror = () => console.error('office host: could not enable Watch All Sessions — turn it on in the UI settings');
 }
 
@@ -89,7 +94,11 @@ const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), 
 
 export async function startHost({ port = 3100, ingest = 3101, rotate = false } = {}) {
   const key = loadKey({ rotate });
-  const child = spawn('npx', ['-y', PIXEL_AGENTS, '--host', '0.0.0.0', '--port', String(port)], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
+  mkdirSync(paHome, { recursive: true });
+  const env = { ...process.env, HOME: paHome, USERPROFILE: paHome };
+  // A new HOME would otherwise give npx a cold cache; keep using the real one.
+  try { env.npm_config_cache ??= execSync('npm config get cache', { encoding: 'utf8', shell: true }).trim(); } catch { /* fall back to default */ }
+  const child = spawn('npx', ['-y', PIXEL_AGENTS, '--host', '0.0.0.0', '--port', String(port)], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32', env });
   child.on('exit', (code) => process.exit(code ?? 1));
   process.on('SIGINT', () => { child.kill(); process.exit(0); });
 
@@ -124,5 +133,5 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
   }).listen(ingest, '0.0.0.0');
 
   const ip = lanIp();
-  console.log(`\nOffice is open.\n  Big screen:  http://${ip}:${port}/\n  Join with:   office join ${ip}:${ingest} <name> --key ${key}\n`);
+  console.log(`\nOffice is open.\n  Big screen:  http://${ip}:${port}/\n  Join with:   office join ${ip}:${ingest} --key ${key}\n`);
 }
