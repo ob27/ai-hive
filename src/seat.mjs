@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-const dir = join(homedir(), '.workspace-office', 'seats');
+const dir = join(process.env.OFFICE_HOME ?? join(homedir(), '.workspace-office'), 'seats');
 const file = (name) => join(dir, `${name.replace(/[^\w.-]/g, '_')}.json`);
 
 /** A seat is the durable identity of one agent in the office. `cwd` doubles as the label the

@@ -15,3 +15,13 @@ export async function send(seat, payload, { quiet = true } = {}) {
     return false;
   }
 }
+
+/** Names currently seated, per the host. Null when the host can't be asked (older host, network). */
+export async function listSeats(url, key) {
+  try {
+    const res = await fetch(`${url}/seats`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(3000) });
+    return res.ok ? new Set(await res.json()) : null;
+  } catch {
+    return null;
+  }
+}

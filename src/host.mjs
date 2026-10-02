@@ -70,10 +70,12 @@ function trackSeats(forward) {
       if (p.hook_event_name === 'SessionEnd') return void seats.delete(id);
       const seat = seats.get(id) ?? { lastSeen: 0, pre: null };
       seat.lastSeen = Date.now();
+      if (p.cwd?.startsWith('/office/')) seat.name = p.cwd.slice('/office/'.length);
       if (p.hook_event_name === 'PreToolUse') seat.pre = p;
       else if (p.hook_event_name === 'PostToolUse' || p.hook_event_name === 'Stop') seat.pre = null;
       seats.set(id, seat);
     },
+    names: () => [...new Set([...seats.values()].map((x) => x.name).filter(Boolean))],
     start() {
       setInterval(() => {
         for (const [id, seat] of seats) {
@@ -120,6 +122,10 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
   http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') return res.end('ok');
     const auth = req.headers.authorization ?? '';
+    if (req.method === 'GET' && req.url === '/seats') {
+      if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
+      return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(seats.names()));
+    }
     if (req.method !== 'POST' || !req.url.startsWith('/api/hooks/')) return res.writeHead(404).end();
     if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
     const chunks = [];

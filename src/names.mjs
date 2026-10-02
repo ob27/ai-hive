@@ -6,8 +6,13 @@ const NAMES = ['Ada','Alan','Grace','Linus','Margaret','Dennis','Barbara','Ken',
 
 /** Same user + machine + project folder → same name every time, so an agent is recognisable on the
  *  big screen across sessions. Pass an explicit name to override. */
-export function defaultName(cwd = process.cwd()) {
+export function defaultName(cwd = process.cwd(), taken = new Set()) {
   const id = `${userInfo().username}@${hostname()}:${basename(cwd)}`;
   const n = createHash('sha256').update(id).digest().readUInt32BE(0);
-  return NAMES[n % NAMES.length];
+  const derived = NAMES[n % NAMES.length];
+  if (!taken.has(derived)) return derived;
+  // Someone is already sitting under that name: pick another free one at random.
+  const free = NAMES.filter((x) => !taken.has(x));
+  if (free.length) return free[Math.floor(Math.random() * free.length)];
+  return `${derived}${Math.floor(Math.random() * 90) + 10}`;
 }

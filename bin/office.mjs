@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSeat, loadSeat, removeSeat } from '../src/seat.mjs';
-import { send } from '../src/transport.mjs';
+import { listSeats, send } from '../src/transport.mjs';
 import { sessionStart, sessionEnd } from '../src/protocol.mjs';
 import { chirp, idle } from '../src/chirp.mjs';
 import { runWrapped } from '../src/run.mjs';
@@ -36,10 +36,11 @@ async function joinOffice() {
   const token = flag('key') ?? process.env.OFFICE_KEY;
   const claude = bool('claude');
   const [host, given] = rest.filter((a) => !a.startsWith('--'));
-  const name = given ?? defaultName();
   if (!host) die('usage: office join <host[:port]> [name] --key K [--claude]');
   if (!token) die('no key — pass --key (ask whoever hosts the office) or set OFFICE_KEY');
-  const seat = createSeat({ url: normalizeUrl(host), token, name });
+  const url = normalizeUrl(host);
+  const name = given ?? defaultName(process.cwd(), (await listSeats(url, token)) ?? new Set());
+  const seat = createSeat({ url, token, name });
   const ok = await send(seat, sessionStart(seat), { quiet: false });
   if (!ok) { removeSeat(name); die(`could not join ${seat.url} — check the address and key`); }
   if (claude) installClaudeHooks(seat);

@@ -29,7 +29,7 @@ node bin/office.mjs join 192.168.0.30:3101 --key <key>
 ```
 
 The name is optional: by default it is derived from your user, machine and project folder, so the same agent
-is always the same character (e.g. "Grace"). Pass one (`… 3101 alice --key …`) to choose your own.
+is always the same character (e.g. "Grace"). If that name is already taken in the room, you get a different free one. Pass one (`… 3101 alice --key …`) to choose your own.
 
 Then pick how your agent reports activity:
 
