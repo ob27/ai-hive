@@ -66,14 +66,16 @@ function trackSeats(forward) {
   return {
     observe(p) {
       const id = p.session_id;
-      if (!id) return;
+      if (!id) return false;
       if (p.hook_event_name === 'SessionEnd') return void seats.delete(id);
+      const known = seats.has(id);
       const seat = seats.get(id) ?? { lastSeen: 0, pre: null };
       seat.lastSeen = Date.now();
       if (p.cwd?.startsWith('/office/')) seat.name = p.cwd.slice('/office/'.length);
       if (p.hook_event_name === 'PreToolUse') seat.pre = p;
       else if (p.hook_event_name === 'PostToolUse' || p.hook_event_name === 'Stop') seat.pre = null;
       seats.set(id, seat);
+      return !known; // true → first time this host has heard from the seat
     },
     names: () => [...new Set([...seats.values()].map((x) => x.name).filter(Boolean))],
     start() {
@@ -133,7 +135,11 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
     req.on('end', async () => {
       let payload;
       try { payload = JSON.parse(Buffer.concat(chunks).toString()); } catch { return res.writeHead(400).end(); }
-      seats.observe(payload);
+      // After a host restart, running agents keep sending tool events but never a new SessionStart, and
+      // Pixel Agents drops events for sessions it has not seen start. Re-introduce the seat ourselves.
+      if (seats.observe(payload) === true && payload.hook_event_name !== 'SessionStart') {
+        await post(req.url, { session_id: payload.session_id, hook_event_name: 'SessionStart', cwd: payload.cwd, source: 'startup' });
+      }
       res.writeHead(await post(req.url, payload)).end();
     });
   }).listen(ingest, '0.0.0.0');

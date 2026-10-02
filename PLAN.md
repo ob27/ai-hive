@@ -60,6 +60,10 @@ each with a proper name. Layout and settings persist there (separate from any no
    viewer that connects later, so a reloaded TV showed seats "Idle". Statuses do *not* decay on their own
    (measured: still active after 40 s). Fix: the host remembers each seat's latest activity and re-sends it
    every 10 s, and ends seats silent for 30 min (ghost expiry). Verified with a late-joining viewer.
+5a. **Host restarts** (found when a seat vanished): after a restart, running agents send tool events but no new
+   `SessionStart`, and Pixel Agents drops events for sessions it hasn't seen start. The ingest shim now
+   re-sends a synthetic `SessionStart` the first time it hears from an unknown session, so seats reappear on
+   their next activity. Seat *state* (current status) is not persisted across a restart.
 5b. Chirp-only seats look idle if the model skips the reminder; proxy/wrapper don't have that problem.
 6. Copilot Chat: covered by chirp/wrapper for now; the JSONL watcher from the old plan is a later adapter.
 7. Proxy only sees `/chat/completions`-style traffic; streaming tool-call parsing is implemented but only
