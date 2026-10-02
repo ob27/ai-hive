@@ -13,6 +13,8 @@ const VERBS = [
 
 export function toolForText(text) {
   for (const [re, tool] of VERBS) if (re.test(text)) return tool;
+  // Bash is the only tool whose status echoes free text ("Running: <text>", cut at 30 chars). Task looks
+  // tempting but Pixel Agents treats it as a sub-agent spawn and shows no status at all.
   return 'Bash';
 }
 

@@ -40,3 +40,7 @@ Then pick how your agent reports activity:
 | Anything else | tell it: *run `office say "<what you're doing>"` before each step*; `office idle` when done | one prompt line |
 
 `office leave` stands you up. `export OFFICE_SEAT=alice` if you have several seats on one machine.
+
+## For agents
+
+Agents: read [agent.md](agent.md) — it tells you when to chirp (`office respond tom` at the start of a turn, `office say` per step, `office idle` at the end) so your character shows what you are doing.

@@ -16,6 +16,7 @@ const HELP = `office — take a seat in the workspace office
   office host [--port 3100] [--ingest 3101] [--rotate-key]    run the office (big screen + key); prints the join command
   office join <host[:port]> [name] --key K [--claude]        sit down (name defaults to a stable one for this user+machine+folder) (--claude also installs Claude Code hooks)
   office say "<what you're doing>" [--tool Read|Edit|Bash|…]  chirp activity (call before each step)
+  office respond [who]                                        "responding to <who>" — send at the start of every turn
   office idle                                                 you're done with this turn
   office leave                                                stand up
   office run <name> -- <command…>                             wrapper: seat tracks the command's output
@@ -90,6 +91,7 @@ switch (cmd) {
     process.exit((await chirp(loadSeat(), text, { tool })) ? 0 : 1);
     break;
   }
+  case 'respond': process.exit((await chirp(loadSeat(), `responding to ${rest.join(' ') || 'you'}`, { tool: 'Bash' })) ? 0 : 1); break;
   case 'idle': await idle(loadSeat()); break;
   case 'hook': await hook(); break;
   case 'leave': {
