@@ -9,11 +9,12 @@ import { chirp, idle } from '../src/chirp.mjs';
 import { runWrapped } from '../src/run.mjs';
 import { startProxy } from '../src/proxy.mjs';
 import { startHost } from '../src/host.mjs';
+import { defaultName } from '../src/names.mjs';
 
 const HELP = `office — take a seat in the workspace office
 
   office host [--port 3100] [--ingest 3101] [--rotate-key]    run the office (big screen + key); prints the join command
-  office join <host[:port]> <name> --key K [--claude]        sit down (--claude also installs Claude Code hooks)
+  office join <host[:port]> [name] --key K [--claude]        sit down (name defaults to a stable one for this user+machine+folder) (--claude also installs Claude Code hooks)
   office say "<what you're doing>" [--tool Read|Edit|Bash|…]  chirp activity (call before each step)
   office idle                                                 you're done with this turn
   office leave                                                stand up
@@ -33,8 +34,9 @@ const die = (msg) => { console.error(`office: ${msg}`); process.exit(1); };
 async function joinOffice() {
   const token = flag('key') ?? process.env.OFFICE_KEY;
   const claude = bool('claude');
-  const [host, name] = rest.filter((a) => !a.startsWith('--'));
-  if (!host || !name) die('usage: office join <host[:port]> <name> --key K [--claude]');
+  const [host, given] = rest.filter((a) => !a.startsWith('--'));
+  const name = given ?? defaultName();
+  if (!host) die('usage: office join <host[:port]> [name] --key K [--claude]');
   if (!token) die('no key — pass --key (ask whoever hosts the office) or set OFFICE_KEY');
   const seat = createSeat({ url: normalizeUrl(host), token, name });
   const ok = await send(seat, sessionStart(seat), { quiet: false });

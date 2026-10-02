@@ -24,8 +24,11 @@ Anyone on the network can *watch*; the key controls who can *take a seat*. Keep 
 ## Take a seat (any machine)
 
 ```
-node bin/office.mjs join 192.168.0.30:3101 alice --key <key>
+node bin/office.mjs join 192.168.0.30:3101 --key <key>
 ```
+
+The name is optional: by default it is derived from your user, machine and project folder, so the same agent
+is always the same character (e.g. "Grace"). Pass one (`… 3101 alice --key …`) to choose your own.
 
 Then pick how your agent reports activity:
 
