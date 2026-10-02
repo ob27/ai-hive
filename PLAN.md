@@ -50,7 +50,11 @@ from any machine, with one command. Supersedes the "Copilot bridge + forked hook
    The key is one shared secret with no per-person revocation (rotate and redistribute). Keep the host on a
    LAN/VPN — the ingest port accepts anything holding the key.
 4. `office join --claude`: hook install, forwarding, label and `leave` cleanup verified with real-shaped payloads; a live Claude Code session was not run.
-5. Chirp-only seats look idle if the model skips the reminder; proxy/wrapper don't have that problem.
+5. **Late viewers (found by screenshot):** Pixel Agents doesn't replay a hooks-only seat's current activity to a
+   viewer that connects later, so a reloaded TV showed seats "Idle". Statuses do *not* decay on their own
+   (measured: still active after 40 s). Fix: the host remembers each seat's latest activity and re-sends it
+   every 10 s, and ends seats silent for 30 min (ghost expiry). Verified with a late-joining viewer.
+5b. Chirp-only seats look idle if the model skips the reminder; proxy/wrapper don't have that problem.
 6. Copilot Chat: covered by chirp/wrapper for now; the JSONL watcher from the old plan is a later adapter.
 7. Proxy only sees `/chat/completions`-style traffic; streaming tool-call parsing is implemented but only
    tested with a non-streaming response.
