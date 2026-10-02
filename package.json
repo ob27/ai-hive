@@ -1,0 +1,10 @@
+{
+  "name": "workspace-office",
+  "version": "0.0.1",
+  "description": "Take a seat in the shared Pixel Agents office from any agent: chirp, wrap, or proxy.",
+  "type": "module",
+  "bin": { "office": "bin/office.mjs" },
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test test/" },
+  "license": "MIT"
+}
