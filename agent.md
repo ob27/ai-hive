@@ -48,6 +48,13 @@ office leave              stand up (end of session)
 
 ## One line for your system prompt
 
-> You have a seat in the workspace office. At the start of each turn run `office respond <user's name>`;
-> before each step run `office say "<what you're doing, 2–5 words>"`; at the end of the turn run
-> `office idle`. If `office` errors, ignore it and keep working. See agent.md.
+Don't hard-code a name — let each chat take its own seat, so it is given a free name:
+
+> You have a seat in the workspace office. First run
+> `node <path-to>/workspace-office/bin/office.mjs join <host:3101> --key <key>` and read the name it prints
+> and the command it tells you to report with. Use exactly that command for everything after: at the start
+> of each turn `respond <user's name>`; before each step `say "<2–5 words>"`; at the end of the turn `idle`.
+> If it errors, ignore it and keep working. See agent.md.
+
+(Each shell call starts fresh, so keep the `OFFICE_SEAT=<name>` prefix on every command rather than relying
+on `export`.)

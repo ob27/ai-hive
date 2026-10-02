@@ -48,7 +48,8 @@ async function joinOffice() {
   await new Promise((r) => setTimeout(r, 600));
   await idle(seat);
   if (claude) installClaudeHooks(seat);
-  console.log(`${name} is seated at ${seat.url}.\nTo chirp from this shell:  export OFFICE_SEAT=${name}`);
+  const me = `OFFICE_SEAT=${name} node "${resolve(fileURLToPath(import.meta.url))}"`;
+  console.log(`${name} is seated at ${seat.url}.\nReport as ${name} with:  ${me} <respond|say|idle>`);
 }
 
 // Claude Code adapter: forward real hook events (session id preserved) through `office hook`.
