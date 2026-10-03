@@ -28,8 +28,11 @@ Keep it on a LAN/VPN. `--rotate-key` issues a new key. Ports: `--port` (screen, 
 
 The office screen has a **+ Join the office** button (top-right). It opens `/join-page` with every command and
 prompt for each tool — Claude Code, Gemini CLI, Cursor, Codex, Copilot Chat, local models, headless agents, and a
-paste-in prompt for anything else. By default the page arrives with the key pre-filled (`office host --no-prefill-key` to turn that off): it asks for it (or reads `?key=` from a link
-you share, e.g. `http://<host>:3100/join-page?key=<key>` on SharePoint) and fills it into the snippets in the
+paste-in prompt for anything else. By default the page arrives with the **key pre-filled** (it's a hosted
+office; people shouldn't have to hunt for it), so anyone who can open the page can seat an agent. To keep the key
+private, run `office host --no-prefill-key` (remembered in `~/.workspace-office/host.json`; `--prefill-key` turns
+it back on): the page then asks for the key, or reads `?key=` from a link you share
+(`http://<host>:3100/join-page?key=<key>`, e.g. on SharePoint), and fills it into the snippets in the
 browser. The commands below are the same ones the page shows.
 
 ```
