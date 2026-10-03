@@ -15,7 +15,16 @@ export function createSeat({ url, token, name }) {
   return seat;
 }
 
+export const pidFile = (name) => join(dir, `${name.replace(/[^\w.-]/g, '_')}.watch.pid`);
+
+/** Stops a background `office watch` started for this seat, if any. */
+export function killWatcher(name) {
+  try { process.kill(Number(readFileSync(pidFile(name), 'utf8'))); } catch { /* not running */ }
+  rmSync(pidFile(name), { force: true });
+}
+
 export function removeSeat(name) {
+  killWatcher(name);
   rmSync(file(name), { force: true });
 }
 
@@ -23,7 +32,7 @@ export function removeSeat(name) {
 export function loadSeat(name = process.env.OFFICE_SEAT) {
   if (name) return JSON.parse(readFileSync(file(name), 'utf8'));
   let files;
-  try { files = readdirSync(dir); } catch { files = []; }
+  try { files = readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { files = []; }
   if (!files.length) throw new Error('no seat — run `office join <host[:port]> <name>` first');
   const newest = files.map((f) => join(dir, f)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   return JSON.parse(readFileSync(newest, 'utf8'));

@@ -46,6 +46,19 @@ each with a proper name. Layout and settings persist there (separate from any no
   broke every seat), so the host advertises its Bonjour `.local` name (`scutil --get LocalHostName`; plain
   `os.hostname()` was a router-assigned name). Reserving the IP in the router is still the sturdier fix.
 
+## Adapters added after the first cut
+- **`office event`** — one generic hook target. `src/normalize.mjs` maps Claude Code/Codex, Gemini CLI
+  (BeforeTool/AfterTool/BeforeAgent/AfterAgent) and Cursor (before*/after*/stop) payloads to one action set
+  (`pre/post/prompt/stop`). Always exits 0 and prints nothing (Cursor `before*` hooks get an allow reply),
+  because in these tools exit codes / stdout are verdicts. Formats came from each tool's docs; not run in the
+  real apps.
+- **Copilot Chat watcher** — `src/copilot.mjs`. Chat logs are JSONL *patch logs* (kind 0 state / 1 set / 2 array
+  write), up to 100 MB+, so it tails only appended bytes from "now". New turn = `kind 2 k=[requests]`; tool calls
+  = items in `requests[n].response`, keyed by `toolCallId` (the array is rewritten in overlapping batches);
+  turn end = `requests[n].result`. Verified by replaying a real session (7 prompts / 6 stops / sensible tool
+  mix) and by an end-to-end test; never prints commands. Granularity is whatever VS Code flushes (batches), so
+  a burst is coalesced to "responding…" then the latest tool.
+
 ## Three ways to report activity (cheapest cooperation first)
 | Mode | Command | Needs the agent to… | Best for |
 |---|---|---|---|

@@ -38,6 +38,26 @@ in the room you get a different free one. Add a name (`… join Grace --key …`
 turn — the model has to do nothing. (Restart the Claude session so the hooks load. The hook file is kept out of
 git via `.git/info/exclude`; `office leave` removes it.)
 
+**Other agent tools with hooks** — add the flag and `join` installs that tool's hooks in the current folder
+(they report every tool use and each new prompt; `office leave` removes them):
+
+| Tool | Flag | Notes |
+|---|---|---|
+| Claude Code | `--claude` | `.claude/settings.local.json` |
+| Gemini CLI | `--gemini` | `.gemini/settings.json` (BeforeTool/AfterTool/BeforeAgent/AfterAgent) |
+| Cursor | `--cursor` | `.cursor/hooks.json` |
+| Codex CLI | *(manual)* | Codex's hook payloads match Claude Code's, so register `node "<cli>/bin/office.mjs" event --seat <name>` as its hook command (see Codex's hooks docs for where) |
+
+Gemini and Cursor write shared project files, so `join` warns if the file is already tracked by git. The Gemini,
+Cursor and Codex adapters follow those tools' documented hook formats and are unit-tested with sample
+payloads, but have **not** been run inside the real apps.
+
+**VS Code Copilot Chat:** add `--copilot` (or run `office watch copilot [--detach]` yourself). A background
+watcher tails Copilot's own chat logs and reports each new turn, tool call (with the file name) and turn
+end — no cooperation from the model. It starts from "now" and never replays history; commands are never
+shown, only a generic "running a command". Reads `Code`, `Code - Insiders` and `VSCodium` user data;
+set `OFFICE_VSCODE_USER_DIR` for a portable/custom install. `office leave` stops it.
+
 **Any other agent:** tell it *"Read http://<host>:3101/agent?key=<key> and follow it"* (it fetches with curl).
 Or pick a mode:
 

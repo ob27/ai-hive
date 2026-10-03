@@ -1,4 +1,4 @@
-import { postToolUse, preToolUse, stop } from './protocol.mjs';
+import { postToolUse, preToolUse, sessionEnd, stop } from './protocol.mjs';
 import { send } from './transport.mjs';
 
 // Each chirp closes the previous tool and opens a new one, so a bare `office say` per step is
@@ -11,4 +11,16 @@ export async function chirp(seat, text, { tool, input } = {}) {
 export async function idle(seat) {
   await send(seat, postToolUse(seat));
   return send(seat, stop(seat));
+}
+
+/** Applies one normalized action (see normalize.mjs / copilot.mjs) to a seat. */
+export async function applyAction(seat, action, user = 'you') {
+  switch (action.type) {
+    case 'pre': return chirp(seat, action.text, { tool: action.tool, input: action.input });
+    case 'post': return send(seat, postToolUse(seat));
+    case 'prompt': return chirp(seat, `responding to ${user}`, { tool: 'Bash' });
+    case 'stop': return idle(seat);
+    case 'end': return send(seat, sessionEnd(seat));
+    default: return true; // 'start': joining already seated us; a character appears on the first tool event
+  }
 }
