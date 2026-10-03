@@ -44,39 +44,44 @@ export function joinPage({ ingest }) {
     <div class="snip" data-t="curl.exe -s {{base}}/join | node - join {{name}}--key {{key}}"><small>Windows PowerShell (not yet tested on Windows)</small></div>
     <p>It prints your name and a <b>Report as …</b> command. Add one flag from below to also report your tool's activity automatically.</p></div>
 
-  <div class="card"><h2>2 · Claude Code</h2>
-    <p>Run in the project folder, then <b>restart the Claude session</b> so the hooks load. Every tool use and "responding to you" is reported — the model does nothing.</p>
+  <div class="card"><h2>2 · Claude Code (CLI <i>and</i> the VS Code extension)</h2>
+    <p>Covers both the Claude Code command line and the <b>Claude Code extension for VS Code</b> — they share the same hooks. Run in the project folder (in VS Code: the folder you opened), then <b>restart the Claude session</b> so the hooks load. Every tool use and "responding to you" is reported — the model does nothing.</p>
     <div class="snip" data-t="curl -s {{base}}/join | node - join {{name}}--key {{key}} --claude"><small>hooks (recommended)</small></div>
     <p>Already mid-chat and don't want to restart? Paste this into the chat instead:</p>
     <div class="snip" data-t="{{prompt}}"><small>prompt</small></div></div>
 
-  <div class="card"><h2>3 · Gemini CLI · Cursor · Codex</h2>
+  <div class="card"><h2>3 · Qwen Code (CLI <i>and</i> the VS Code add-on)</h2>
+    <p>Covers Qwen Code on the command line and the <b>Qwen Code Companion add-on for VS Code</b>, which runs the same agent underneath. Run in the project folder; hooks report every tool use and "responding to you". Qwen re-reads its hook settings from its hooks menu, so you may not need a restart — if nothing shows, restart the session. <span class="warn">Follows Qwen's documented hook format; not yet run inside the real add-on.</span></p>
+    <div class="snip" data-t="curl -s {{base}}/join | node - join {{name}}--key {{key}} --qwen"><small>Qwen Code hooks</small></div>
+    <p>Using a <b>Qwen model through Copilot Chat</b> (your own endpoint / BYOK)? That is covered by the Copilot Chat watcher in step 5 — no Qwen setup needed. Running Qwen on your own server with another agent? Use the proxy in step 6.</p></div>
+
+  <div class="card"><h2>4 · Gemini CLI · Cursor · Codex</h2>
     <p>Same one-liner with a flag — installs that tool's hooks in the current folder. <span class="warn">Written to each tool's documented hook format; not yet run inside the real apps.</span></p>
     <div class="snip" data-t="curl -s {{base}}/join | node - join {{name}}--key {{key}} --gemini"><small>Gemini CLI</small></div>
     <div class="snip" data-t="curl -s {{base}}/join | node - join {{name}}--key {{key}} --cursor"><small>Cursor</small></div>
     <p>Codex CLI: its hook payloads match Claude Code's. After joining, register this as its hook command (see Codex's hooks docs for where):</p>
     <div class="snip" data-t="node &quot;$HOME/.workspace-office/cli/bin/office.mjs&quot; event --seat YOUR_NAME"><small>Codex hook command</small></div></div>
 
-  <div class="card"><h2>4 · VS Code Copilot Chat</h2>
+  <div class="card"><h2>5 · VS Code Copilot Chat (including Qwen and other BYOK models)</h2>
     <p>Starts a background watcher on your Copilot chat logs: new turns, tool calls (with file names) and turn ends. Commands are never shown. <b>office leave</b> stops it.</p>
     <div class="snip" data-t="curl -s {{base}}/join | node - join {{name}}--key {{key}} --copilot"></div></div>
 
-  <div class="card"><h2>5 · Local models (Qwen, llama.cpp, Ollama, LM Studio…)</h2>
+  <div class="card"><h2>6 · Local models (Qwen, llama.cpp, Ollama, LM Studio…)</h2>
     <p>Join first (step 1), then run the proxy in front of your model's OpenAI-compatible endpoint and point your agent at the proxy. It sees every tool call on the wire — the model does nothing. Use the <b>Report as</b> path that join printed in place of <b>office</b> if it isn't on your PATH.</p>
     <div class="snip" data-t="office proxy YOUR_NAME --listen 8081 --target http://localhost:8080/v1"></div>
     <p>Then set your agent's base URL to <b>http://localhost:8081</b>.</p></div>
 
-  <div class="card"><h2>6 · Headless / command-line agents</h2>
+  <div class="card"><h2>7 · Headless / command-line agents</h2>
     <p>Wraps any command; the seat shows working while it prints output and idle when it goes quiet.</p>
     <div class="snip" data-t="office run YOUR_NAME -- your-agent-command --args"></div></div>
 
-  <div class="card"><h2>7 · Any other agent — paste this prompt</h2>
+  <div class="card"><h2>8 · Any other agent — paste this prompt</h2>
     <p>The agent fetches its own instructions from the office (so there are no paths to edit), joins under a free name, and reports with a tiny command per step. Works anywhere an agent can run shell commands. It depends on the model following the prompt — prefer a hook or proxy above when you can.</p>
     <div class="snip" data-t="{{prompt}}"><small>prompt</small></div>
     <p>…or fetch the instructions yourself to read them:</p>
     <div class="snip" data-t="curl -s &quot;{{base}}/agent?key={{key}}&quot;"></div></div>
 
-  <div class="card"><h2>8 · Leave</h2>
+  <div class="card"><h2>9 · Leave</h2>
     <div class="snip" data-t="office leave --seat YOUR_NAME"><small>stands you up, stops watchers and removes the hooks it installed in this folder</small></div></div>
 </main>
 <script>

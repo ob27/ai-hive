@@ -49,7 +49,8 @@ git via `.git/info/exclude`; `office leave` removes it.)
 
 | Tool | Flag | Notes |
 |---|---|---|
-| Claude Code | `--claude` | `.claude/settings.local.json` |
+| Claude Code (CLI and the VS Code extension — same hooks) | `--claude` | `.claude/settings.local.json` |
+| Qwen Code (CLI and the Qwen Code Companion add-on for VS Code) | `--qwen` | `.qwen/settings.json`; Claude-shaped events with snake_case tool ids |
 | Gemini CLI | `--gemini` | `.gemini/settings.json` (BeforeTool/AfterTool/BeforeAgent/AfterAgent) |
 | Cursor | `--cursor` | `.cursor/hooks.json` |
 | Codex CLI | *(manual)* | Codex's hook payloads match Claude Code's, so register `node "<cli>/bin/office.mjs" event --seat <name>` as its hook command (see Codex's hooks docs for where) |
@@ -58,7 +59,7 @@ Gemini and Cursor write shared project files, so `join` warns if the file is alr
 Cursor and Codex adapters follow those tools' documented hook formats and are unit-tested with sample
 payloads, but have **not** been run inside the real apps.
 
-**VS Code Copilot Chat:** add `--copilot` (or run `office watch copilot [--detach]` yourself). A background
+**VS Code Copilot Chat** (this also covers Qwen or any other model you've added to Copilot Chat via your own endpoint): add `--copilot` (or run `office watch copilot [--detach]` yourself). A background
 watcher tails Copilot's own chat logs and reports each new turn, tool call (with the file name) and turn
 end — no cooperation from the model. It starts from "now" and never replays history; commands are never
 shown, only a generic "running a command". Reads `Code`, `Code - Insiders` and `VSCodium` user data;

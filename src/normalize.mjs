@@ -5,7 +5,7 @@
 //   { type: 'stop' }               the turn is over → idle
 //   { type: 'start' | 'end' }      session lifecycle
 // Shapes (all JSON on stdin):
-//   Claude Code, Codex   {hook_event_name:'PreToolUse', tool_name, tool_input:{command|file_path}, …}
+//   Claude Code, Codex, Qwen Code   {hook_event_name:'PreToolUse', tool_name, tool_input:{command|file_path}, …}
 //   Gemini CLI           {hook_event_name:'BeforeTool'|'AfterTool'|'BeforeAgent'|'AfterAgent', tool_name, tool_input}
 //   Cursor               {hook_event_name:'beforeShellExecution'|'beforeReadFile'|'afterFileEdit'|'beforeSubmitPrompt'|'stop', command|file_path}
 
@@ -18,12 +18,20 @@ const GEMINI_TOOLS = {
 
 const pre = (tool, input) => ({ type: 'pre', tool, input });
 
+// Qwen Code (a Gemini CLI fork) sends Claude-shaped events but Gemini-style snake_case tool ids (write_file…),
+// so Claude-shaped PreToolUse also goes through the name map. Some tools pass the path as absolute_path.
+const claudeShapedPre = (p) => {
+  const input = { ...(p.tool_input ?? {}) };
+  input.file_path ??= input.absolute_path ?? input.path;
+  return pre(GEMINI_TOOLS[p.tool_name] ?? p.tool_name ?? 'Bash', input);
+};
+
 export function parseHookPayload(raw) {
   const p = typeof raw === 'string' ? JSON.parse(raw.replace(/^﻿/, '')) : raw; // Cursor on Windows prefixes a BOM
   const ev = p.hook_event_name;
   switch (ev) {
     // Claude Code / Codex
-    case 'PreToolUse': return pre(p.tool_name || 'Bash', p.tool_input ?? {});
+    case 'PreToolUse': return claudeShapedPre(p);
     case 'PostToolUse': case 'PostToolUseFailure': return { type: 'post' };
     case 'UserPromptSubmit': return { type: 'prompt' };
     case 'Stop': return { type: 'stop' };

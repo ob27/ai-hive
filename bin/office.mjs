@@ -19,9 +19,9 @@ import { installCli, reportCommand } from '../src/install.mjs';
 const HELP = `office — take a seat in the workspace office
 
   office host [--port 3100] [--ingest 3101] [--rotate-key]    run the office (big screen + key); prints the join command
-  office join <host[:port]> [name] --key K [--claude|--gemini|--cursor|--copilot]
+  office join <host[:port]> [name] --key K [--claude|--qwen|--gemini|--cursor|--copilot]
                                                               sit down (name defaults to a stable one for this user+machine+folder);
-                                                              --claude/--gemini/--cursor install that tool's hooks in this folder;
+                                                              --claude/--qwen/--gemini/--cursor install that tool's hooks in this folder;
                                                               --copilot starts a background watcher for VS Code Copilot Chat
   office watch copilot [--seat <name>] [--detach]             report VS Code Copilot Chat activity on a seat
   office say "<what you're doing>" [--tool Read|Edit|Bash|…]  chirp activity (call before each step)
@@ -46,10 +46,10 @@ const die = (msg) => { console.error(`office: ${msg}`); process.exit(1); };
 
 async function joinOffice() {
   const token = flag('key') ?? process.env.OFFICE_KEY;
-  const hookKinds = ['claude', 'gemini', 'cursor'].filter((k) => bool(k));
+  const hookKinds = ['claude', 'qwen', 'gemini', 'cursor'].filter((k) => bool(k));
   const copilot = bool('copilot');
   const [host, given] = rest.filter((a) => !a.startsWith('--'));
-  if (!host) die('usage: office join <host[:port]> [name] --key K [--claude|--gemini|--cursor|--copilot]');
+  if (!host) die('usage: office join <host[:port]> [name] --key K [--claude|--qwen|--gemini|--cursor|--copilot]');
   if (!token) die('no key — pass --key (ask whoever hosts the office) or set OFFICE_KEY');
   const url = normalizeUrl(host);
   const name = given ?? defaultName(process.cwd(), (await listSeats(url, token)) ?? new Set());
@@ -69,6 +69,7 @@ async function joinOffice() {
 // runs this CLI, tagged by the 'office.mjs' path so `leave` (and a re-join) can find and replace only ours.
 const HOOK_TARGETS = {
   claude: { file: ['.claude', 'settings.local.json'], sub: 'hook', events: ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'Stop', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'SubagentStart', 'SubagentStop'], entry: (command) => ({ hooks: [{ type: 'command', command }] }), root: (s) => (s.hooks ??= {}) },
+  qwen: { file: ['.qwen', 'settings.json'], sub: 'event', events: ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'Stop', 'PreToolUse', 'PostToolUse'], entry: (command) => ({ hooks: [{ type: 'command', command }] }), root: (s) => (s.hooks ??= {}) },
   gemini: { file: ['.gemini', 'settings.json'], sub: 'event', events: ['BeforeTool', 'AfterTool', 'BeforeAgent', 'AfterAgent'], entry: (command) => ({ matcher: '.*', hooks: [{ type: 'command', command }] }), root: (s) => (s.hooks ??= {}) },
   cursor: { file: ['.cursor', 'hooks.json'], sub: 'event', events: ['beforeShellExecution', 'afterShellExecution', 'beforeReadFile', 'afterFileEdit', 'beforeSubmitPrompt', 'stop'], entry: (command) => ({ command }), root: (s) => { s.version ??= 1; return (s.hooks ??= {}); } },
 };

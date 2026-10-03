@@ -9,6 +9,13 @@ test('Claude Code / Codex shape', () => {
   assert.equal(parseHookPayload({ hook_event_name: 'Stop' }).type, 'stop');
 });
 
+test('Qwen Code: Claude-shaped events with snake_case tool ids', () => {
+  assert.deepEqual(parseHookPayload({ hook_event_name: 'PreToolUse', tool_name: 'write_file', tool_input: { file_path: '/q/a.ts', content: 'SECRET' } }), { type: 'pre', tool: 'Write', input: { file_path: '/q/a.ts', content: 'SECRET' } });
+  assert.equal(parseHookPayload({ hook_event_name: 'PreToolUse', tool_name: 'run_shell_command', tool_input: { command: 'ls' } }).tool, 'Bash');
+  assert.equal(parseHookPayload({ hook_event_name: 'PreToolUse', tool_name: 'read_file', tool_input: { absolute_path: '/q/b.md' } }).input.file_path, '/q/b.md');
+  assert.equal(parseHookPayload({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: '/c.ts' } }).tool, 'Edit'); // Claude names pass through
+});
+
 test('Gemini CLI shape maps tool names', () => {
   assert.deepEqual(parseHookPayload({ hook_event_name: 'BeforeTool', tool_name: 'run_shell_command', tool_input: { command: 'ls' } }), { type: 'pre', tool: 'Bash', input: { command: 'ls' } });
   assert.equal(parseHookPayload({ hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: { file_path: '/x' } }).tool, 'Read');
