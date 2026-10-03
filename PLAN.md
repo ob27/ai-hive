@@ -59,6 +59,14 @@ each with a proper name. Layout and settings persist there (separate from any no
   mix) and by an end-to-end test; never prints commands. Granularity is whatever VS Code flushes (batches), so
   a burst is coalesced to "responding…" then the latest tool.
 
+## The screen port is a small reverse proxy
+Pixel Agents' UI is a prebuilt bundle, so the **Join button** is added by fronting it: Pixel Agents runs on a
+private `127.0.0.1` port and `src/screen.mjs` serves the public screen port — proxying HTTP, tunnelling the
+WebSocket upgrade byte-for-byte, injecting the button into the one HTML document, and serving `/join-page`
+(`src/joinpage.mjs`). The page is viewable by anyone (like the screen) so it never embeds the key; it takes it
+as input / `?key=` / localStorage and templates it client-side. Verified in a browser: live agents still render
+through the proxy, button appears, click opens the page, snippets fill.
+
 ## Three ways to report activity (cheapest cooperation first)
 | Mode | Command | Needs the agent to… | Best for |
 |---|---|---|---|

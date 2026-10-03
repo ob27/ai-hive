@@ -2,10 +2,12 @@ import { execSync, spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bootstrapScript, cliFiles } from './bootstrap.mjs';
+import { startScreen } from './screen.mjs';
 
 const PIXEL_AGENTS = 'pixel-agents@1.4.1';
 const dir = join(homedir(), '.workspace-office');
@@ -104,6 +106,12 @@ function stableName() {
   return hostname().endsWith('.local') ? hostname() : null;
 }
 
+const freePort = () => new Promise((resolve, reject) => {
+  const srv = net.createServer();
+  srv.once('error', reject);
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
+});
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // What an agent reads to get going: where to join, then the behaviour rules from agent.md.
@@ -138,16 +146,19 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
   const env = { ...process.env, HOME: paHome, USERPROFILE: paHome };
   // A new HOME would otherwise give npx a cold cache; keep using the real one.
   try { env.npm_config_cache ??= execSync('npm config get cache', { encoding: 'utf8', shell: true }).trim(); } catch { /* fall back to default */ }
-  const child = spawn('npx', ['-y', PIXEL_AGENTS, '--host', '0.0.0.0', '--port', String(port)], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32', env });
+  // Pixel Agents stays private on a local port; the public screen port fronts it (see screen.mjs).
+  const inner = await freePort();
+  const child = spawn('npx', ['-y', PIXEL_AGENTS, '--host', '127.0.0.1', '--port', String(inner)], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32', env });
   child.on('exit', (code) => process.exit(code ?? 1));
   process.on('SIGINT', () => { child.kill(); process.exit(0); });
 
-  const token = await waitForToken(port);
-  enableWatchAll(port, token);
+  const token = await waitForToken(inner);
+  enableWatchAll(inner, token);
+  startScreen({ port, inner, ingest });
 
   const post = (path, payload) => new Promise((resolve) => {
     const out = http.request(
-      { host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${pixelAgentsToken(port) ?? token}` } },
+      { host: '127.0.0.1', port: inner, path, method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${pixelAgentsToken(inner) ?? token}` } },
       (up) => { up.resume(); up.on('end', () => resolve(up.statusCode)); },
     );
     out.on('error', () => resolve(502));
@@ -195,6 +206,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
   console.log(`
 Office is open.
   Big screen:  http://${name}:${port}/${name === ip ? '' : `   (or http://${ip}:${port}/)`}
+  Join page:   http://${name}:${port}/join-page   (the "Join the office" button on the screen opens it)
   Join:        curl -s http://${name}:${ingest}/join | node - join --key ${key}
   For agents:  "Read http://${name}:${ingest}/agent?key=${key} and follow it" (fetch it with curl)
 `);

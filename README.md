@@ -26,6 +26,12 @@ Keep it on a LAN/VPN. `--rotate-key` issues a new key. Ports: `--port` (screen, 
 
 ## Take a seat (any machine with Node 20+ — nothing to clone or install)
 
+The office screen has a **+ Join the office** button (top-right). It opens `/join-page` with every command and
+prompt for each tool — Claude Code, Gemini CLI, Cursor, Codex, Copilot Chat, local models, headless agents, and a
+paste-in prompt for anything else. The page never contains the key: it asks for it (or reads `?key=` from a link
+you share, e.g. `http://<host>:3100/join-page?key=<key>` on SharePoint) and fills it into the snippets in the
+browser. The commands below are the same ones the page shows.
+
 ```
 curl -s http://<host>:3101/join | node - join --key <key>
 ```
