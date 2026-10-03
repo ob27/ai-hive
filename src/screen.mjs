@@ -14,10 +14,10 @@ const BUTTON = `
 </style>`;
 
 /** Public screen port → Pixel Agents on a private local port, plus /join-page and the injected button. */
-export function startScreen({ port, inner, ingest }) {
+export function startScreen({ port, inner, ingest, prefillKey = null }) {
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.split('?')[0] === '/join-page') {
-      return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(joinPage({ ingest }));
+      return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(joinPage({ ingest, key: prefillKey }));
     }
     const headers = { ...req.headers };
     delete headers['accept-encoding']; // we may need to rewrite the HTML, so ask for it uncompressed

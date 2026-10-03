@@ -10,7 +10,7 @@ import { bootstrapScript, cliFiles } from './bootstrap.mjs';
 import { startScreen } from './screen.mjs';
 
 const PIXEL_AGENTS = 'pixel-agents@1.4.1';
-const dir = join(homedir(), '.workspace-office');
+const dir = process.env.OFFICE_HOME ?? join(homedir(), '.workspace-office');
 const hostFile = join(dir, 'host.json');
 
 // Pixel Agents auto-detects every local Claude Code session by scanning ~/.claude/projects and labels each
@@ -20,13 +20,21 @@ const paHome = join(dir, 'pixel-home');
 
 /** The shared key is what the host hands to CLI users. It is stable across restarts (unlike
  *  Pixel Agents' own per-boot token, which never leaves this machine). */
-export function loadKey({ rotate = false } = {}) {
-  if (!rotate && existsSync(hostFile)) return JSON.parse(readFileSync(hostFile, 'utf8')).key;
-  const key = randomBytes(16).toString('hex');
+/** Host config lives in host.json: the shared key, and `prefillKey` — whether the public join page arrives with the
+ *  key already filled in (default on: this office is hosted for people to join, so they shouldn't have to hunt
+ *  for the key). A flag passed to `office host` is remembered here for next time. */
+export function loadHostConfig({ rotate = false, prefillKey } = {}) {
+  let cfg = {};
+  try { cfg = JSON.parse(readFileSync(hostFile, 'utf8')); } catch { /* first run */ }
+  if (rotate || !cfg.key) cfg.key = randomBytes(16).toString('hex');
+  if (prefillKey !== undefined) cfg.prefillKey = prefillKey;
+  cfg.prefillKey ??= true;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(hostFile, JSON.stringify({ key }, null, 2), { mode: 0o600 });
-  return key;
+  writeFileSync(hostFile, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  return cfg;
 }
+
+export const loadKey = (opts) => loadHostConfig(opts).key;
 
 const lanIp = () => Object.values(networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal)?.address ?? '<this-machine-ip>';
 
@@ -140,8 +148,8 @@ ${rules.replace(/^# agent\.md.*\n/, '')}`;
 
 const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export async function startHost({ port = 3100, ingest = 3101, rotate = false } = {}) {
-  const key = loadKey({ rotate });
+export async function startHost({ port = 3100, ingest = 3101, rotate = false, prefillKey } = {}) {
+  const { key, prefillKey: prefill } = loadHostConfig({ rotate, prefillKey });
   mkdirSync(paHome, { recursive: true });
   const env = { ...process.env, HOME: paHome, USERPROFILE: paHome };
   // A new HOME would otherwise give npx a cold cache; keep using the real one.
@@ -154,7 +162,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
 
   const token = await waitForToken(inner);
   enableWatchAll(inner, token);
-  startScreen({ port, inner, ingest });
+  startScreen({ port, inner, ingest, prefillKey: prefill ? key : null });
 
   const post = (path, payload) => new Promise((resolve) => {
     const out = http.request(
@@ -207,6 +215,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
 Office is open.
   Big screen:  http://${name}:${port}/${name === ip ? '' : `   (or http://${ip}:${port}/)`}
   Join page:   http://${name}:${port}/join-page   (the "Join the office" button on the screen opens it)
+               key is ${prefill ? 'PRE-FILLED for anyone who can open the page (turn off: office host --no-prefill-key)' : 'not pre-filled — people must be given it (turn on: office host --prefill-key)'}
   Join:        curl -s http://${name}:${ingest}/join | node - join --key ${key}
   For agents:  "Read http://${name}:${ingest}/agent?key=${key} and follow it" (fetch it with curl)
 `);

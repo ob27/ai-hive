@@ -18,7 +18,10 @@ import { installCli, reportCommand } from '../src/install.mjs';
 
 const HELP = `office — take a seat in the workspace office
 
-  office host [--port 3100] [--ingest 3101] [--rotate-key]    run the office (big screen + key); prints the join command
+  office host [--port 3100] [--ingest 3101] [--rotate-key] [--prefill-key|--no-prefill-key]
+                                                              run the office (big screen + key); prints the join command.
+                                                              The join page arrives with the key filled in by default; the
+                                                              prefill flags are remembered in ~/.workspace-office/host.json
   office join <host[:port]> [name] --key K [--claude|--qwen|--gemini|--cursor|--copilot]
                                                               sit down (name defaults to a stable one for this user+machine+folder);
                                                               --claude/--qwen/--gemini/--cursor install that tool's hooks in this folder;
@@ -134,7 +137,7 @@ async function hook() {
 }
 
 switch (cmd) {
-  case 'host': await startHost({ port: Number(flag('port') ?? 3100), ingest: Number(flag('ingest') ?? 3101), rotate: bool('rotate-key') }); break;
+  case 'host': await startHost({ port: Number(flag('port') ?? 3100), ingest: Number(flag('ingest') ?? 3101), rotate: bool('rotate-key'), prefillKey: bool('prefill-key') ? true : bool('no-prefill-key') ? false : undefined }); break;
   case 'join': await joinOffice(); break;
   case 'say': {
     const tool = flag('tool');

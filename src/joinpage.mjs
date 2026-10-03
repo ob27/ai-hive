@@ -1,9 +1,10 @@
 /** The "Join the office" page: every command and prompt someone needs to get their agent seated.
  *
- *  The office screen is viewable by anyone on the network by design, and the key is what gates seating, so
- *  this page never contains the key. It asks for it (or reads ?key= from a link you share, or remembers it in
- *  the browser) and fills it into the snippets client-side. */
-export function joinPage({ ingest }) {
+ *  Where the key comes from, in priority order: a ?key= in the link, then `key` passed here (the host's
+ *  prefillKey setting — on by default, so people arrive with it filled in), then whatever this browser
+ *  remembered. With prefill off the page never contains the key and asks for it instead.
+ *  Prefilling means anyone who can open this page can seat an agent: the key stops being a gate. */
+export function joinPage({ ingest, key = null }) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Join the office</title>
@@ -33,7 +34,7 @@ export function joinPage({ ingest }) {
   <a href="/">← back to the office</a></div>
 
   <div class="setup">
-    <div><label for="key">Office key (ask whoever runs the office)</label><input id="key" type="password" autocomplete="off" placeholder="paste the key"></div>
+    <div><label for="key">Office key <span id="keyhint"></span></label><input id="key" type="password" autocomplete="off" placeholder="paste the key"></div>
     <div><label for="name">Agent name (optional — one is chosen for you, and never clashes)</label><input id="name" placeholder="e.g. Grace"></div>
   </div>
   <p class="warn need">Enter the key above to fill it into the commands. The key is not stored on this page — only in your browser.</p>
@@ -86,14 +87,17 @@ export function joinPage({ ingest }) {
 </main>
 <script>
   var INGEST = ${Number(ingest)};
+  var PREFILL = ${key ? JSON.stringify(String(key)).replace(/</g, '\\u003c') : 'null'};
   var base = location.protocol + '//' + location.hostname + ':' + INGEST;
   var keyEl = document.getElementById('key'), nameEl = document.getElementById('name');
   function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   var fromUrl = new URLSearchParams(location.search).get('key');
-  keyEl.value = fromUrl || safeGet('officeKey') || '';
+  keyEl.value = fromUrl || PREFILL || safeGet('officeKey') || '';  // PREFILL beats a remembered key: the host may have rotated it
   nameEl.value = safeGet('officeName') || '';
   if (fromUrl) { safeSet('officeKey', fromUrl); history.replaceState(null, '', location.pathname); } // keep the key out of the address bar
+
+  document.getElementById('keyhint').textContent = PREFILL ? '(filled in for you)' : '(ask whoever runs the office)';
 
   function fill(t) {
     var key = keyEl.value.trim() || '<KEY>';

@@ -63,8 +63,11 @@ each with a proper name. Layout and settings persist there (separate from any no
 Pixel Agents' UI is a prebuilt bundle, so the **Join button** is added by fronting it: Pixel Agents runs on a
 private `127.0.0.1` port and `src/screen.mjs` serves the public screen port — proxying HTTP, tunnelling the
 WebSocket upgrade byte-for-byte, injecting the button into the one HTML document, and serving `/join-page`
-(`src/joinpage.mjs`). The page is viewable by anyone (like the screen) so it never embeds the key; it takes it
-as input / `?key=` / localStorage and templates it client-side. Verified in a browser: live agents still render
+(`src/joinpage.mjs`). The key is **pre-filled by default** (`prefillKey` in `host.json`, default true; `office host
+--no-prefill-key` / `--prefill-key` persist the choice) because the office is hosted for people to join — this means
+anyone who can open the page can seat an agent, i.e. the key stops being a gate. With prefill off the page never
+embeds the key and takes it as input / `?key=` / localStorage. Precedence: `?key=` > host prefill > localStorage
+(so a rotated key wins over a stale remembered one). Templated client-side. Verified in a browser: live agents still render
 through the proxy, button appears, click opens the page, snippets fill.
 
 ## Three ways to report activity (cheapest cooperation first)
@@ -85,7 +88,7 @@ through the proxy, button appears, click opens the page, snippets fill.
 ## Open items (found in the spike)
 1. ~~Watch All Sessions~~ and ~~stable token~~ — solved by `office host` (see above); verified: wrong key → 401,
    right key → seat appears.
-3. **By design:** anyone who can reach the host can watch the office; the key only gates who can seat an agent.
+3. **By design:** anyone who can reach the host can watch the office; the key gates who can seat an agent — unless the join page prefills it (the default), in which case anyone who can open the page can join.
    The key is one shared secret with no per-person revocation (rotate and redistribute). Keep the host on a
    LAN/VPN — the ingest port accepts anything holding the key.
 4. `office join --claude`: hook install, forwarding, label and `leave` cleanup verified with real-shaped payloads; a live Claude Code session was not run.
