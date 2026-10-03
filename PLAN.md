@@ -34,6 +34,18 @@ from any machine, with one command. Supersedes the "Copilot bridge + forked hook
 (`~/.workspace-office/pixel-home`): nothing to scan, so the only characters are agents that ran `office join`,
 each with a proper name. Layout and settings persist there (separate from any normal Pixel Agents install).
 
+## Getting agents onto the screen (ease of joining)
+- **Host serves the CLI.** `GET /join` is a tiny bootstrap (`curl -s <host>:3101/join | node - join --key K`);
+  it pulls `GET /cli.json` (the whole dependency-free CLI), installs it under `~/.workspace-office/cli` with an
+  `office` launcher, and runs the command with this host as the default address. Seats are always the same
+  version as the office; no repo clone, no paths. `GET /agent?key=K` serves the agent instructions.
+- **Claude Code needs zero cooperation:** `join --claude` adds hooks incl. `UserPromptSubmit`, which the CLI turns
+  into "responding to <os user>"; `Stop` → idle. Hooks run the installed copy, and the hook file is added to
+  `.git/info/exclude`.
+- **Stable address:** seats store the host's address. LAN IPs change (DHCP renewed `.30` → `.54` and silently
+  broke every seat), so the host advertises its Bonjour `.local` name (`scutil --get LocalHostName`; plain
+  `os.hostname()` was a router-assigned name). Reserving the IP in the router is still the sturdier fix.
+
 ## Three ways to report activity (cheapest cooperation first)
 | Mode | Command | Needs the agent to… | Best for |
 |---|---|---|---|

@@ -2,8 +2,10 @@ import { execSync, spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
-import { homedir, networkInterfaces } from 'node:os';
-import { join } from 'node:path';
+import { homedir, hostname, networkInterfaces } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { bootstrapScript, cliFiles } from './bootstrap.mjs';
 
 const PIXEL_AGENTS = 'pixel-agents@1.4.1';
 const dir = join(homedir(), '.workspace-office');
@@ -94,6 +96,40 @@ function trackSeats(forward) {
   };
 }
 
+// os.hostname() can be a router-assigned name (e.g. "Mac.mymodem"); macOS's Bonjour name is the stable one.
+function stableName() {
+  try {
+    if (process.platform === 'darwin') return `${execSync('scutil --get LocalHostName', { encoding: 'utf8' }).trim()}.local`;
+  } catch { /* fall through */ }
+  return hostname().endsWith('.local') ? hostname() : null;
+}
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// What an agent reads to get going: where to join, then the behaviour rules from agent.md.
+function agentInstructions(base, key) {
+  const rules = readFileSync(join(repoRoot, 'agent.md'), 'utf8').split('## One line for your system prompt')[0];
+  return `# Take a seat in the workspace office
+
+Office: ${base}
+
+## 1. Join (once, first)
+
+Run this exactly:
+
+    curl -s ${base}/join | node - join --key ${key}
+
+It prints the name you were given and a \`Report as <name> with: …\` command. Use exactly that command (with
+\`respond\`, \`say\` or \`idle\` after it) for everything below — your shell does not remember anything
+between calls, so don't rely on \`export\`. If you are Claude Code and the user wants hooks, add \`--claude\`
+to the join (then tool use and "responding to <user>" are reported for you and you can skip steps 2–3).
+If the join fails, tell the user and carry on with their task.
+
+## 2. Behave
+
+${rules.replace(/^# agent\.md.*\n/, '')}`;
+}
+
 const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 export async function startHost({ port = 3100, ingest = 3101, rotate = false } = {}) {
@@ -124,6 +160,15 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
   http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') return res.end('ok');
     const auth = req.headers.authorization ?? '';
+    // Public, secret-free: the bootstrap script and the CLI itself. (Joining still needs the key.)
+    const url = new URL(req.url, 'http://x');
+    const base = `http://${req.headers.host ?? `${lanIp()}:${ingest}`}`;
+    if (req.method === 'GET' && url.pathname === '/join') return res.writeHead(200, { 'content-type': 'text/plain' }).end(bootstrapScript(base));
+    if (req.method === 'GET' && url.pathname === '/cli.json') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(cliFiles()));
+    if (req.method === 'GET' && url.pathname === '/agent') {
+      if (!same(url.searchParams.get('key') ?? '', key)) return res.writeHead(401).end('unauthorized');
+      return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(agentInstructions(base, key));
+    }
     if (req.method === 'GET' && req.url === '/seats') {
       if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
       return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(seats.names()));
@@ -144,6 +189,13 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false } =
     });
   }).listen(ingest, '0.0.0.0');
 
+  // Prefer the machine's .local name: the LAN address changes when DHCP renews, and every seat stores its address.
   const ip = lanIp();
-  console.log(`\nOffice is open.\n  Big screen:  http://${ip}:${port}/\n  Join with:   office join ${ip}:${ingest} --key ${key}\n`);
+  const name = stableName() ?? ip;
+  console.log(`
+Office is open.
+  Big screen:  http://${name}:${port}/${name === ip ? '' : `   (or http://${ip}:${port}/)`}
+  Join:        curl -s http://${name}:${ingest}/join | node - join --key ${key}
+  For agents:  "Read http://${name}:${ingest}/agent?key=${key} and follow it" (fetch it with curl)
+`);
 }

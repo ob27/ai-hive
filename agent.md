@@ -32,9 +32,8 @@ If you need the person to answer or approve something, `office say "waiting for 
 
 ## If you were seated by hooks or a proxy
 
-If the person ran `office join … --claude`, hooks already report your tool use — **don't** chirp each tool
-call (it doubles up). You only need `office respond` at the start of a turn and `office idle` at the end
-if you want those moments visible. If you're behind `office proxy`, tool calls are reported for you too.
+If the person ran `office join … --claude`, hooks already report your tool use **and** "responding to <user>" at the
+start of every turn, and mark you idle when you stop — **don't** chirp at all (it doubles up). If you're behind `office proxy`, tool calls are reported for you too.
 Chirps are for agents with neither.
 
 ## Commands
@@ -48,13 +47,8 @@ office leave              stand up (end of session)
 
 ## One line for your system prompt
 
-Don't hard-code a name — let each chat take its own seat, so it is given a free name:
+> You have a seat in the workspace office. Read `http://<host>:3101/agent?key=<key>` (fetch it with curl) and
+> follow it. If anything about the office errors, ignore it and keep working.
 
-> You have a seat in the workspace office. First run
-> `node <path-to>/workspace-office/bin/office.mjs join <host:3101> --key <key>` and read the name it prints
-> and the command it tells you to report with. Use exactly that command for everything after: at the start
-> of each turn `respond <user's name>`; before each step `say "<2–5 words>"`; at the end of the turn `idle`.
-> If it errors, ignore it and keep working. See agent.md.
-
-(Each shell call starts fresh, so keep the `OFFICE_SEAT=<name>` prefix on every command rather than relying
-on `export`.)
+That page (served by the host) has the exact join command, so no paths or names are hard-coded, and each chat
+is given a free name.

@@ -11,36 +11,43 @@ Requires Node 20+ (Node 22+ on the machine that hosts the office). No `npm insta
 node bin/office.mjs host
 ```
 
-It prints the big-screen URL (open it on the TV) and the join line to share:
+It prints the big-screen URL (open it on the TV) and the lines to share, using the machine's stable `.local`
+name so seats keep working when its IP changes:
 
 ```
-Big screen:  http://192.168.0.30:3100/
-Join with:   office join 192.168.0.30:3101 <name> --key 1f89e0d6…
+Big screen:  http://Thomass-MacBook-Pro.local:3100/
+Join:        curl -s http://Thomass-MacBook-Pro.local:3101/join | node - join --key 1f89e0d6…
+For agents:  "Read http://…:3101/agent?key=… and follow it"
 ```
 
 Anyone on the network can *watch*; the key controls who can *take a seat*. Only agents that `join` appear —
-local Claude Code sessions are not auto-detected (the office runs in its own private Pixel Agents home). Keep it on a LAN/VPN.
-`--rotate-key` issues a new key. Ports: `--port` (screen, 3100), `--ingest` (agents, 3101).
+local Claude Code sessions are not auto-detected (the office runs in its own private Pixel Agents home).
+Keep it on a LAN/VPN. `--rotate-key` issues a new key. Ports: `--port` (screen, 3100), `--ingest` (agents, 3101).
 
-## Take a seat (any machine)
+## Take a seat (any machine with Node 20+ — nothing to clone or install)
 
 ```
-node bin/office.mjs join 192.168.0.30:3101 --key <key>
+curl -s http://<host>:3101/join | node - join --key <key>
 ```
 
-The name is optional: by default it is derived from your user, machine and project folder, so the same agent
-is always the same character (e.g. "Grace"). If that name is already taken in the room, you get a different free one. Pass one (`… 3101 alice --key …`) to choose your own.
+This downloads the CLI from the host, installs an `office` launcher, and seats you. The name is optional: by
+default it is derived from your user, machine and project folder (e.g. "Grace"); if that name is already taken
+in the room you get a different free one. Add a name (`… join Grace --key …`) to choose your own.
 
-Then pick how your agent reports activity:
+**Claude Code:** add `--claude`. Hooks report every tool use *and* "responding to <you>" at the start of each
+turn — the model has to do nothing. (Restart the Claude session so the hooks load. The hook file is kept out of
+git via `.git/info/exclude`; `office leave` removes it.)
 
-| Agent | Do this | Agent cooperation |
-|---|---|---|
-| Claude Code | add `--claude` to `join` (installs project-local hooks; `office leave` removes them) | none |
-| Local model (Qwen, llama.cpp, Ollama…) | `office proxy alice --listen 8081 --target http://localhost:8080/v1`, then point the agent at `:8081` | change base URL |
-| Headless CLI agent | `office run alice -- <command>` | none |
-| Anything else | tell it: *run `office say "<what you're doing>"` before each step*; `office idle` when done | one prompt line |
+**Any other agent:** tell it *"Read http://<host>:3101/agent?key=<key> and follow it"* (it fetches with curl).
+Or pick a mode:
 
-`office leave` stands you up. `export OFFICE_SEAT=alice` if you have several seats on one machine.
+| Agent | Do this |
+|---|---|
+| Local model (Qwen, llama.cpp, Ollama…) | `office proxy <name> --listen 8081 --target http://localhost:8080/v1`, then point the agent at `:8081` |
+| Headless CLI agent | `office run <name> -- <command>` |
+| Anything else | it runs `office say "<what it's doing>"` per step, `office idle` when done (see agent.md) |
+
+`office leave --seat <name>` stands you up.
 
 ## For agents
 
