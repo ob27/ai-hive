@@ -1,6 +1,7 @@
 // What a service can say about the machine it runs on, for its heartbeat (`hive heartbeat --metrics`): cpu, mem, load, disk (percent) and temp (°C).
-// Only what the machine can tell us cheaply and without special rights: a reading that is not available (temperature on a Mac, load on Windows)
-// is left out, never faked. Node's own `os` module plus one small command each for the things it cannot see.
+// Only what the machine can tell us without special rights: a reading that is not available (load on Windows, temperature when no sensor tool is installed)
+// is left out, never faked. Node's own `os` module, plus one small command each for the things it cannot see. For temperature on a Mac install
+// `macmon` (brew install macmon), or point --temp-command at any probe that prints a number.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
@@ -52,18 +53,48 @@ export function diskPercent() {
   return m ? Number(m[1]) : undefined;
 }
 
-/** Hottest thermal zone in °C, on Linux. A Mac does not give a temperature without special rights, so none is reported there. */
-export function tempCelsius() {
-  if (process.platform !== 'linux') return undefined;
+const hottest = (nums) => { const t = nums.filter((n) => Number.isFinite(n) && n > 0 && n < 150); return t.length ? Math.round(Math.max(...t) * 10) / 10 : undefined; };
+const numbers = (text) => [...String(text).matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+
+/** Pulls a temperature out of what a probe tool prints: macmon's JSON (cpu/gpu temperatures), or just the first number in plain text ("61.8°C"). Pure, for tests. */
+export function parseTemperature(text) {
+  const t = String(text).trim();
   try {
-    const zones = readdirSync('/sys/class/thermal').filter((z) => z.startsWith('thermal_zone'));
-    const temps = zones.map((z) => Number(readFileSafe(`/sys/class/thermal/${z}/temp`)) / 1000).filter((t) => t > 0 && t < 150);
-    return temps.length ? Math.round(Math.max(...temps) * 10) / 10 : undefined;
-  } catch { return undefined; }
+    const j = JSON.parse(t.split('\n').filter(Boolean).at(-1));
+    if (typeof j === 'number') return hottest([j]); // a bare number
+    const found = [];
+    (function walk(o, key = '') { if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) walk(v, k); else if (typeof o === 'number' && /temp/i.test(key)) found.push(o); })(j);
+    return hottest(found);
+  } catch { return hottest(numbers(t).slice(0, 1)); }
+}
+
+/**
+ * The hottest sensor in °C, from whatever this machine can tell us. In order: your own probe (`command`, or $HIVE_TEMP_COMMAND: anything that prints a number),
+ * then on a Mac `macmon` (Apple Silicon, no special rights), `osx-cpu-temp` or `istats`; on Linux the kernel's thermal zones and hwmon sensors, and an NVIDIA
+ * GPU if `nvidia-smi` is there. Nothing found: undefined (a reading is never faked).
+ */
+export function tempCelsius({ command } = {}) {
+  const custom = command ?? process.env.HIVE_TEMP_COMMAND;
+  if (custom) return parseTemperature(run('sh', ['-c', custom]));
+  if (process.platform === 'darwin') {
+    for (const [cmd, args] of [['macmon', ['pipe', '-s', '1']], ['osx-cpu-temp', []], ['istats', ['cpu', 'temp', '--value-only']]]) {
+      const t = parseTemperature(run(cmd, args));
+      if (t !== undefined) return t;
+    }
+    return undefined;
+  }
+  if (process.platform === 'linux') {
+    const temps = [];
+    try { for (const z of readdirSync('/sys/class/thermal').filter((n) => n.startsWith('thermal_zone'))) temps.push(Number(readFileSafe(`/sys/class/thermal/${z}/temp`)) / 1000); } catch { /* none */ }
+    try { for (const h of readdirSync('/sys/class/hwmon')) for (const f of readdirSync(`/sys/class/hwmon/${h}`).filter((n) => /^temp\d+_input$/.test(n))) temps.push(Number(readFileSafe(`/sys/class/hwmon/${h}/${f}`)) / 1000); } catch { /* none */ }
+    const gpu = parseTemperature(run('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader']));
+    return hottest([...temps, ...(gpu === undefined ? [] : [gpu])]);
+  }
+  return undefined;
 }
 
 /** One reading of everything this machine can tell us. Only the values that exist are present. */
-export async function sampleMachine() {
-  const m = { cpu: await cpuPercent(), mem: memPercent(), load: loadPercent(), disk: diskPercent(), temp: tempCelsius() };
+export async function sampleMachine({ tempCommand } = {}) {
+  const m = { cpu: await cpuPercent(), mem: memPercent(), load: loadPercent(), disk: diskPercent(), temp: tempCelsius({ command: tempCommand }) };
   return Object.fromEntries(Object.entries(m).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)));
 }

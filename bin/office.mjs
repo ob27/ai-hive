@@ -237,7 +237,8 @@ switch (cmd) {
   }
   case 'heartbeat': {
     const id = flag('id');
-    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value]');
+    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value] [--temp-command "<cmd>"]');
+    const tempCommand = flag('temp-command'); // any command that prints a temperature in °C: your own sensor probe
     const withMetrics = bool('metrics'); // stream this machine's cpu / memory / load / disk / temperature with each heartbeat
     const fixed = {}; // --metric temp=61 (repeatable): a reading the machine cannot give by itself
     for (let m; (m = flag('metric')) !== undefined;) { const [k, v] = String(m).split('='); if (k && Number.isFinite(Number(v))) fixed[k] = Number(v); }
@@ -259,7 +260,7 @@ switch (cmd) {
           lastLine = s.last; extra = { status: s.status, message: s.message, ...extra };
         } catch { /* the host will not answer a heartbeat either: that failure is reported below */ }
       }
-      const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine() : {}), ...fixed } : undefined;
+      const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine({ tempCommand }) : {}), ...fixed } : undefined;
       const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra, metrics }));
       if (!r.ok) console.error(`hive: heartbeat failed: ${r.error}`);
       return r.ok;

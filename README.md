@@ -62,7 +62,10 @@ The screen: `http://<host>:3100/` (also `/hive/`). One tile per agent or service
   which is how to put the Hive's own web app on its wall: `hive heartbeat --id hive-web --name "Hive Web App" --logs --every 30 --url <host>:3101 --key <key>`.
   Service names longer than 28 characters are cut with an ellipsis on the card (the `--id` is untouched).
 - **Machine stats and the rules**: `--metrics` streams the readings of the machine the service runs on (cpu, mem, load as a percent of the cores, disk, and
-  temperature where the machine gives one: Linux, not a Mac) with each heartbeat; `--metric temp=61` adds a reading of your own. The details box shows them
+  temperature where there is a sensor to read) with each heartbeat. Temperature: Linux is read from the kernel's thermal and hwmon sensors (and an NVIDIA GPU
+  through `nvidia-smi`); on a Mac install [macmon](https://github.com/vladkens/macmon) (`brew install macmon`, Apple Silicon, no sudo; `osx-cpu-temp` and
+  `istats` work too). Any other probe: `--temp-command "<command that prints °C>"` (or `HIVE_TEMP_COMMAND`); `--metric temp=61` sets a reading by hand.
+  With no sensor the temperature is left out, never guessed. The details box shows them
   as gauges. The host runs a small rules layer over what it is sent (`src/service-rules.mjs`) and lets the status follow the machine, with the reason, so
   a service that says "all fine" while its memory climbs steadily for ten minutes (or its CPU sits above 90% for two) shows as Degraded, and 100 °C as
   a Failure. The rules are a few readable lines and the defaults are in the file; your own go in `~/.workspace-office/service-rules.txt` and replace them:
