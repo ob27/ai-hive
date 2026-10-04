@@ -24,7 +24,7 @@ export function ProductionInfo({ total, agents }: { total: number; agents: { nam
       <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Hive Production</div>
         <p style={{ margin: 0 }}>
-          The total production of everyone in this Hive. Each finished turn adds a share of a hexagon, depending on what it did, how long it ran and how big the model is. The hexagon with no digit is the part-built one.
+          The total production of everyone in this Hive. Each finished turn adds a share of a hexagon, depending on what it did, how long it ran and how big the model is. The hexagons count whole production; hover a count to see the exact figure.
         </p>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: muted, marginBottom: 4 }}>How a turn is worth</div>
