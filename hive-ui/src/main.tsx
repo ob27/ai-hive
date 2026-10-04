@@ -3,6 +3,7 @@ import { ToastProvider } from "rebar-ui";
 import { createRoot } from "react-dom/client";
 import "rebar-ui/style.css";
 import "@rebar-ui/theme-clean/theme.css";
+import "./hive.css";
 import { App } from "./App";
 
 createRoot(document.getElementById("root")!).render(

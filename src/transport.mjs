@@ -1,7 +1,7 @@
 // One POST per event to the hive's ingest. Never throws into the caller's agent loop:
 // a down office server must not break the agent doing real work.
 let pendingNotice = null;
-/** What the host sent back on the last event, if anything for the agent to read (a tap on the shoulder, or news that it was removed). Taken once. */
+/** What the host sent back on the last event, if anything for the agent to read (a request to listen, or news that it was removed). Taken once. */
 export function takePendingNotice() { const n = pendingNotice; pendingNotice = null; return n; }
 
 export async function send(seat, payload, { quiet = true, joining = false } = {}) {

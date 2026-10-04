@@ -104,3 +104,15 @@ test('rejoining under a name that already had turns counted (before slots) carri
   assert.equal(m.turns, 9);
   assert.ok(m.slot?.startsWith('rebarui#'));
 });
+
+test('hive update fetches the host\'s current CLI, so hooks stop running a stale copy', async () => {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const into = join(root, 'updated-cli');
+  assert.equal((await run('three/rebarui', ['join', addr, 'Stale', '--key', KEY])).status, 0);
+  const r = await run('three/rebarui', ['update', '--seat', 'Stale', '--into', into]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /Updated the CLI in .* from http:\/\/127\.0\.0\.1:\d+ \(\d+ files\)/);
+  assert.equal(readFileSync(join(into, 'bin', 'office.mjs'), 'utf8'), readFileSync(CLI, 'utf8'), 'the same code the host serves');
+  assert.ok(existsSync(join(into, 'src', 'listenloop.mjs')));
+  await run('three/rebarui', ['leave', '--seat', 'Stale']);
+});

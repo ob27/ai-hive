@@ -166,7 +166,7 @@ export function handleHumanBuzz(req, res, buzz, hive = null) {
 }
 
 /** GET /buzz (keyed): the thread, for an agent that wants to read before it replies. */
-export function handleBuzzRead(req, res, buzz, key, hive = null) {
+export function handleBuzzRead(req, res, buzz, key) {
   if (req.method !== 'GET' || req.url.split('?')[0] !== '/buzz') return false;
   if (!same(req.headers.authorization ?? '', `Bearer ${key}`)) { res.writeHead(401).end('unauthorized'); return true; }
   const q = new URL(req.url, 'http://x').searchParams;
@@ -174,13 +174,7 @@ export function handleBuzzRead(req, res, buzz, key, hive = null) {
     const wait = Math.min(Math.max(Number(q.get('wait')) || 0, 0), 110) * 1000;
     const ctl = { gone: false };
     req.on('close', () => { ctl.gone = true; });
-    const as = q.get('as') ?? '';
-    buzz.waitFor(Number(q.get('after')) || 0, as, wait).then((lines) => {
-      if (ctl.gone) return;
-      // Woken with nothing: a tap on the shoulder from the host. It comes as a line with id 0 (the client must not move its place in the thread for it).
-      const tap = !lines.length && hive ? hive.takeTap(as) : null;
-      json(res, 200, tap ? [{ id: 0, at: Date.now(), from: 'hive', kind: 'system', text: tap, tap: true }] : lines);
-    });
+    buzz.waitFor(Number(q.get('after')) || 0, q.get('as') ?? '', wait).then((lines) => { if (!ctl.gone) json(res, 200, lines); });
     return true;
   }
   json(res, 200, buzz.list(Number(q.get('limit')) || 20));
@@ -264,11 +258,10 @@ export function handleHiveRead(req, res, store, uiDir, buzz = null, info = {}) {
 }
 
 /**
- * POST /hive/admin { action: 'boot' | 'tap' | 'listen', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
+ * POST /hive/admin { action: 'boot' | 'listen', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
  * hive key (the same one agents join with); the wall asks for it once.
  *   boot  take the agent off the wall; its events are ignored until it rejoins, and it is told once, on its next event, that it was removed.
  *   listen  ask a working, chatty agent to come and sit in the chat when it reaches a stopping point (it runs `hive listen`).
- *   tap   put a message in front of the agent (at once if it is sitting in the chat, else on its next event) asking it to fix its seating.
  */
 export function handleAdmin(req, res, { hive, buzz, key }) {
   if (req.method !== 'POST' || req.url.split('?')[0] !== '/hive/admin') return false;
@@ -282,14 +275,6 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       buzz?.post({ from: 'hive', kind: 'system', text: `${a.name} was booted from the hive by ${by}.` });
       return void res.writeHead(204).end();
     }
-    if (body.action === 'tap') {
-      const t = hive.tap(body.id, by);
-      if (!t) return json(res, 404, { error: 'that agent is not on the wall any more' });
-      if (t.unsupported) return json(res, 409, { error: `${t.name} runs in Cursor, which cannot receive messages from the Hive.` });
-      buzz?.post({ from: 'hive', kind: 'system', text: `${by} tapped ${t.name} on the shoulder.` });
-      buzz?.poke(t.name); // an agent sitting in the chat hears it now
-      return void res.writeHead(204).end();
-    }
     if (body.action === 'listen') {
       const t = hive.askToListen(body.id, by);
       if (!t) return json(res, 404, { error: 'that agent is not on the wall any more' });
@@ -297,7 +282,7 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       buzz?.post({ from: 'hive', kind: 'system', text: `${by} asked ${t.name} to listen.` });
       return void res.writeHead(204).end();
     }
-    json(res, 400, { error: 'action must be boot, tap or listen' });
+    json(res, 400, { error: 'action must be boot or listen' });
   });
   return true;
 }

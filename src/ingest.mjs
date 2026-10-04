@@ -95,7 +95,7 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
       try { ({ hive: meta, ...payload } = JSON.parse(Buffer.concat(chunks).toString())); } catch { return res.writeHead(400).end(); }
       hive.observe(payload, meta); // `meta` (the seat's project folder, chatty flag) is for the wall only: stripped before anything else sees the payload
       const status = await onHook(payload, req.url);
-      const notice = CARRIES_NOTICE.has(payload.hook_event_name) ? hive.takeNotice(payload.session_id) : null; // a tap on the shoulder, or the news that the host removed this seat: rides back on the reply
+      const notice = CARRIES_NOTICE.has(payload.hook_event_name) ? hive.takeNotice(payload.session_id) : null; // an ask to listen, or the news that the host removed this seat: rides back on the reply
       if (notice) return res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ notice }));
       res.writeHead(status).end();
     });

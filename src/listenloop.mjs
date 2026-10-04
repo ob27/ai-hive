@@ -129,8 +129,6 @@ export async function listenAtStop(seat, payload, { wait = LISTEN_WAIT() } = {})
   const after = await readCursor(seat);
   const r = await listenBuzz(seat, after, wait);
   if (!r.ok || !r.messages.length) { clearChatLock(seat); return null; }
-  const tap = r.messages.find((m) => m.tap);
-  if (tap) { clearChatLock(seat); return continuation(payload, `[Hive] ${tap.text}`); } // a tap is not a chat line: no lock, and our place in the thread stays where it was
   writeCursor(seat, r.messages[r.messages.length - 1].id);
   writeFileSync(lockFile(seat), JSON.stringify({ at: Date.now(), turns: (lock?.turns ?? 0) + 1 }));
   return continuation(payload, chatPrompt(r.messages));

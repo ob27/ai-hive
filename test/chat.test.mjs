@@ -62,9 +62,9 @@ test('a person\'s line invites at most two agents, free listeners before busy on
   assert.ok(message.invited.every((n) => ['A', 'B', 'C'].includes(n)));
 });
 
-test('a system line that merely names an agent ("X was tapped on the shoulder") invites nobody', () => {
+test('a system line that merely names an agent ("X asked A to listen") invites nobody', () => {
   const c = clock(); const { buzz } = room(c, { A: 'listening' });
-  assert.deepEqual(buzz.post({ from: 'hive', kind: 'system', text: 'tom tapped A on the shoulder.' }).message.invited, []);
+  assert.deepEqual(buzz.post({ from: 'hive', kind: 'system', text: 'tom asked A to listen.' }).message.invited, []);
 });
 
 test('a name in the line is always invited, and ambient lines invite nobody', () => {

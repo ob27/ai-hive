@@ -21,7 +21,6 @@ export class BuzzLog {
     this.onListenChange = null; // (name): that agent started or stopped waiting in the chat
     this.onDelivered = null;  // (name, lines): `hive listen` just handed these lines to an agent, so it is now writing its answer
     this.onPosted = null;     // (name): an agent has spoken
-    this.pokes = new Map();   // name -> resolvers of that agent's open waits, so a tap on the shoulder can wake them
     this.cfg = { ...BUZZ_DEFAULTS, ...config };
     this.messages = [];
     this.byAgent = new Map(); // name -> timestamps of recent agent lines
@@ -84,9 +83,6 @@ export class BuzzLog {
    * Lines newer than `afterId` that `name` did not write itself. Resolves at once if there are some, otherwise when one arrives, or
    * with [] after `waitMs`. This is what lets a seated agent sit in the chat: it blocks here, costing nothing, until someone speaks.
    */
-  /** End `name`'s open waits at once with nothing (the caller then looks for what woke it, e.g. a tap on the shoulder). */
-  poke(name) { for (const wake of [...(this.pokes.get(name) ?? [])]) wake(); }
-
   isWaiting(name) { return (this.waiting.get(name) ?? 0) > 0; }
 
   waitFor(afterId, name, waitMs) {
@@ -102,12 +98,8 @@ export class BuzzLog {
     this.onListenChange?.(name);
     return new Promise((resolve) => {
       let off = () => {}, tick = null;
-      const wake = () => done([]);
-      this.pokes.set(name, [...(this.pokes.get(name) ?? []), wake]);
       const done = (lines) => {
         clearTimeout(timer); clearTimeout(tick); off();
-        const rest = (this.pokes.get(name) ?? []).filter((f) => f !== wake);
-        if (rest.length) this.pokes.set(name, rest); else this.pokes.delete(name);
         if (lines.length) this.onDelivered?.(name, lines);
         const n = (this.waiting.get(name) ?? 1) - 1;
         if (n > 0) this.waiting.set(name, n); else this.waiting.delete(name);

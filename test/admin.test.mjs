@@ -80,12 +80,12 @@ test('composing shows while an agent is writing its answer, clears when it speak
   });
 });
 
-test('boot takes the agent off the wall, ignores it from then on, and tells it once; a tap queues a message once', () => {
+test('boot takes the agent off the wall, ignores it from then on, and tells it once; an ask to listen is queued once', () => {
   const store = new HiveStore();
-  store.observe(ev('Quill', 'Stop'), { chatty: true });
-  const tap = store.tap('s-Quill', 'tom');
-  assert.match(tap.text, /tom tapped you on the shoulder[\s\S]*hive status --members/);
-  assert.equal(store.takeNotice('s-Quill'), tap.text);
+  store.observe(ev('Quill', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: true, hooks: ['claude'] });
+  const ask = store.askToListen('s-Quill', 'tom');
+  assert.match(ask.text, /tom would like you in Hive Chat/);
+  assert.equal(store.takeNotice('s-Quill'), ask.text);
   assert.equal(store.takeNotice('s-Quill'), null, 'once');
   assert.equal(store.boot('s-Quill').name, 'Quill');
   assert.equal(find(store, 'Quill'), undefined);
@@ -94,15 +94,6 @@ test('boot takes the agent off the wall, ignores it from then on, and tells it o
   assert.match(store.takeNotice('s-Quill'), /removed you from the Hive/);
   assert.equal(store.takeNotice('s-Quill'), null);
   assert.equal(store.boot('nobody'), null);
-});
-
-test('the tap asks for what is actually wrong: no hooks, stalled, or gone quiet', () => {
-  const c = clock(); const store = new HiveStore({ now: c.now });
-  store.observe(ev('NoHooks', 'Stop'), { hooks: [] });
-  store.observe(ev('Stuck', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }), { hooks: ['claude'] });
-  c.advance(6 * MIN);
-  assert.match(store.tap('s-NoHooks').text, /joined without hooks[\s\S]*--claude/);
-  assert.match(store.tap('s-Stuck').text, /look stalled[\s\S]*hive idle/);
 });
 
 const KEY = 'admin-key';
@@ -137,32 +128,7 @@ test('the cog actions need the hive key, and say so in the thread', async () => 
   assert.equal((await admin({ action: 'boot', id: m.id, key: 'wrong' })).status, 401);
   assert.ok(find(store, 'Tess'), 'still seated');
   assert.equal((await admin({ action: 'nope', id: m.id, key: KEY })).status, 400);
-  assert.equal((await admin({ action: 'tap', id: 'ghost', key: KEY })).status, 404);
-});
-
-test('a tap reaches an agent that is not in the chat on its next hook event, once', async () => {
-  const id = find(store, 'Tess').id;
-  assert.equal((await admin({ action: 'tap', id, key: KEY, by: 'tom' })).status, 204);
-  assert.ok(buzz.list(5).some((l) => l.kind === 'system' && /tom tapped Tess on the shoulder/.test(l.text)));
-  const r = await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PostToolUse', tool_name: 'Bash', session_id: 'x', cwd: home });
-  const out = JSON.parse(r.out);
-  assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
-  assert.match(out.hookSpecificOutput.additionalContext, /^\[Hive\] tom tapped you on the shoulder/);
-  assert.equal((await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PostToolUse', tool_name: 'Bash', session_id: 'x', cwd: home })).out, '', 'only once');
-});
-
-test('a tap wakes an agent sitting in the chat at once, and hands it over without the chat-only lock', async () => {
-  const id = find(store, 'Tess').id;
-  const stop = run(['hook', '--seat', 'Tess'], { hook_event_name: 'Stop', session_id: 'x', cwd: home }, { HIVE_LISTEN_WAIT: '20' });
-  await until(() => find(store, 'Tess').status === 'listening');
-  const t0 = Date.now();
-  assert.equal((await admin({ action: 'tap', id, key: KEY, by: 'tom' })).status, 204);
-  const handed = JSON.parse((await stop).out);
-  assert.ok(Date.now() - t0 < 5000, 'woken, not timed out');
-  assert.equal(handed.decision, 'block');
-  assert.match(handed.reason, /^\[Hive\] tom tapped you on the shoulder/);
-  const read = await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: 'a' }, session_id: 'x', cwd: home });
-  assert.equal(read.out, '', 'a tap turn is not chat-locked: the agent has to be able to fix its seating');
+  assert.equal((await admin({ action: 'listen', id: 'ghost', key: KEY })).status, 404);
 });
 
 test('boot removes the agent, and its next event brings it the news once and seats it no more', async () => {
@@ -191,16 +157,6 @@ test('"responding to" names the person the agent works for: --user at join, else
   assert.match(find(store, 'Eve').activity, /^responding to \S+/, 'no --user: falls back to the account name');
   assert.equal(find(store, 'Eve').user, undefined);
   await run(['leave', '--seat', 'Dana']); await run(['leave', '--seat', 'Eve']);
-});
-
-test('a Cursor-only agent cannot be tapped (Cursor has no hook that carries text back), and the wall says so', () => {
-  const s = new HiveStore();
-  s.observe(ev('Cur', 'Stop'), { hooks: ['cursor'] });
-  s.observe(ev('Both', 'Stop'), { hooks: ['cursor', 'claude'] });
-  assert.deepEqual(find(s, 'Cur').tools, ['cursor']);
-  assert.equal(s.tap('s-Cur').unsupported, true);
-  assert.equal(s.takeNotice('s-Cur'), null, 'nothing was queued');
-  assert.match(s.tap('s-Both').text, /tapped you on the shoulder/);
 });
 
 test('"Ask to listen" is only for a working, chatty agent; anyone else is told why not', () => {

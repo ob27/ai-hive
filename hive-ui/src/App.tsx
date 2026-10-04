@@ -62,6 +62,16 @@ export function App() {
     return () => mq.removeEventListener("change", onChange);
   }, [cfg.theme]);
 
+  // Mark the nav link for the page we are on (the header block does not), so it can be styled as the current one.
+  useEffect(() => {
+    const here = window.location.pathname.replace(/\/+$/, "");
+    navRef.current?.querySelectorAll<HTMLAnchorElement>("a.rebar-link").forEach((a) => {
+      if (a.querySelector("img")) return; // the logo link
+      if (new URL(a.href).pathname.replace(/\/+$/, "") === here) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+  });
+
   // The Buzz drawer stays open beside the wall. It opens by itself when the first chatty agent arrives, and you can fold it away.
   const chatty = members.filter((m) => m.chatty).length;
   const [drawer, setDrawer] = useState(cfg.drawer);
@@ -101,7 +111,7 @@ export function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--rebar-color-bg-primary, #fff)" }}>
-      <div ref={navRef} style={{ flex: "none", position: "relative" }}>
+      <div ref={navRef} className="hive-nav" style={{ flex: "none", position: "relative" }}>
         <BlockRenderer key={themeTick} blocks={nav} />
         {production !== null && !onConfigRoute && !onJoinRoute ? (
           <div style={{ position: "absolute", right: 150, top: 0, bottom: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 3 }}>

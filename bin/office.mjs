@@ -15,7 +15,7 @@ import { startProxy } from '../src/proxy.mjs';
 // host.mjs is deliberately NOT imported up here: it pulls in host-only code (scripts/, the screen, the hive store)
 // that the CLI download served to seat machines does not include, so a static import would crash every `join`.
 import { defaultName } from '../src/names.mjs';
-import { installCli, reportCommand } from '../src/install.mjs';
+import { cliDir, installCli, reportCommand } from '../src/install.mjs';
 import { sampleMachine } from '../src/machine-stats.mjs';
 import { logSummary, heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
@@ -55,6 +55,8 @@ const HELP = `hive — join the AI Hive. (The older \`office\` command still wor
   hive logs [--url …] [--key K] [--follow] [--limit 100]      the host's recent requests, errors and console output (needs a current host)
   hive leave                                                stand up
   hive install                                              put office on your PATH (join does this for you)
+  hive update [--seat <name>]                               fetch the host's current CLI (your hooks run the copy under ~/.workspace-office/cli, which
+                                                              only a join refreshes: after the host is upgraded, run this)
   hive run <name> -- <command…>                             wrapper: seat tracks the command's output
   hive proxy <name> --listen 8081 --target http://localhost:8080/v1
                                                               proxy: seat tracks an OpenAI-compatible endpoint
@@ -198,6 +200,17 @@ switch (cmd) {
   }
   case 'respond': { const seat = loadSeat(flag('seat')); process.exit((await chirp(seat, `responding to ${rest.join(' ') || 'you'}`, { tool: 'Bash' })) ? 0 : 1); break; }
   case 'idle': await idle(loadSeat(flag('seat'))); break;
+  case 'update': {
+    // Your hooks run the CLI copy installed under ~/.workspace-office/cli, and only `join` refreshes it. Fetch the host's current one.
+    const seat = loadSeat(flag('seat'));
+    const into = flag('into') ?? cliDir;
+    const res = await fetch(`${seat.url}/cli.json`, { signal: AbortSignal.timeout(8000) }).catch((e) => die(`could not reach ${seat.url} (${e.cause?.code ?? e.message})`));
+    if (!res.ok) die(`${seat.url} answered ${res.status} for its CLI`);
+    const bundle = await res.json();
+    for (const [file, text] of Object.entries(bundle)) { const p = join(into, file); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); }
+    console.log(`Updated the CLI in ${into} from ${seat.url} (${Object.keys(bundle).length} files). Hooks in running sessions use it from their next event.`);
+    break;
+  }
   case 'install': {
     const { shim, dir, onPath } = installCli();
     console.log(`Installed ${shim}${onPath ? '' : `\nAdd ${dir} to your PATH to type just \`office\`.`}`);
@@ -309,8 +322,7 @@ switch (cmd) {
     }
     noteListen(seat, false);
     for (const m of r.messages) console.log(formatLine(m));
-    const spoken = r.messages.filter((m) => !m.tap); // a tap on the shoulder (id 0) is not a place in the thread
-    if (spoken.length) writeCursor(seat, spoken[spoken.length - 1].id);
+    writeCursor(seat, r.messages[r.messages.length - 1].id);
     console.log('Reply with: hive buzz --reply <id> "<your line>"   then   hive listen   again.');
     break;
   }

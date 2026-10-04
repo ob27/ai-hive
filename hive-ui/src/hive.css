@@ -1,0 +1,24 @@
+/* The header's page links are navigation, not hyperlinks in a paragraph: plain text that lifts on hover, with the current page marked. */
+.hive-nav a.rebar-link {
+  color: var(--rebar-color-text-primary, inherit);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.hive-nav a.rebar-link:hover {
+  background: var(--rebar-color-bg-secondary, rgba(128, 128, 128, 0.18));
+}
+.hive-nav a.rebar-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.hive-nav a.rebar-link[aria-current="page"] {
+  background: var(--rebar-color-bg-secondary, rgba(128, 128, 128, 0.18));
+  font-weight: 700;
+}
+/* ...but the logo, which is also a link, stays just the logo. */
+.hive-nav a.rebar-link:has(img) {
+  padding: 0;
+  background: none !important;
+}

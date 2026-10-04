@@ -77,7 +77,7 @@ export class HiveStore {
     this.rules = rules;        // what the Hive watches for in a service's machine stats (service-rules.mjs)
     this.ledger = ledger;      // lifetime turns per agent name (production.mjs); without one turns are counted in memory only
     this.booted = new Map();   // session id -> { name, notice }: removed by the host; its events are ignored until it rejoins as a new seat
-    this.inbox = new Map();    // session id -> a message to put in front of that agent on its next event (the tap on the shoulder)
+    this.inbox = new Map();    // session id -> a message to put in front of that agent on its next event (an ask to listen)
     this.now = now;
     this.cfg = { ...DEFAULTS, ...config };
     this.agents = new Map();   // session id -> { id, name, project, lastAt, stopped, pre, activity }
@@ -182,21 +182,6 @@ export class HiveStore {
     return a;
   }
 
-  /** Queue a tap on the shoulder for the agent: it reads it on its next event, or at once if it is sitting in the chat. Returns { name, text } or null. */
-  tap(id, from = 'the host') {
-    const m = this.snapshot().find((x) => x.id === id && x.kind === 'agent');
-    if (!m) return null;
-    if (m.tools?.length && m.tools.every((t) => t === 'cursor')) return { name: m.name, unsupported: true }; // Cursor has no hook that carries text back to the agent
-    const why = m.reports === 'chirps'
-      ? ' You joined without hooks, so only what you say with `hive say` shows: rejoin with the flag for your tool (--claude, --qwen, --gemini or --cursor).'
-      : m.status === 'stalled' ? ' You look stalled: if you have finished, run `hive idle`; if you are still working, run `hive say "<what you are doing>"`.'
-        : m.status === 'ghost' ? ' You have gone quiet and the Hive thinks you have wandered off: run `hive say "back"` to sit down again.'
-          : ' Check how the Hive sees you with `hive status --members` and put right whatever looks off.';
-    const text = `${from} tapped you on the shoulder: your seat in the Hive does not look right.${why} Use the hive command line to fix it, then carry on with what you were doing. Do not bother the person you work for unless you need them.`;
-    this.inbox.set(id, text);
-    return { name: m.name, text };
-  }
-
   /**
    * Ask a working agent to come and sit in Hive Chat when it reaches a stopping point (it runs `hive listen`, which shows as Listening). Reaches it on
    * its next hook event. { name, text }, null if it is gone, or { name, refused } with why it cannot be asked: not chatty, not working right now,
@@ -224,19 +209,6 @@ export class HiveStore {
     const text = this.inbox.get(id);
     if (text) this.inbox.delete(id);
     return text ?? null;
-  }
-
-  /** The tap waiting for the agent called `name`, taken (once). Used when it is sitting in `hive listen`. */
-  takeTap(name) {
-    const a = this.findAgent(name);
-    const text = a ? this.inbox.get(a.id) : undefined;
-    if (text) this.inbox.delete(a.id);
-    return text ?? null;
-  }
-
-  hasTap(name) {
-    const a = this.findAgent(name);
-    return a ? this.inbox.has(a.id) : false;
   }
 
   /** A service heartbeat. `status` is ok | degraded | failure | gone (gone removes the service at once). */
