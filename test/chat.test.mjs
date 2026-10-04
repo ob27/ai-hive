@@ -2,7 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HiveStore } from '../src/hive.mjs';
@@ -221,6 +221,22 @@ test('a chatty seat\'s Stop hook listens, hands over the line that was asked, an
   assert.ok(JSON.parse((await pre('Read', { file_path: 'a' })).out), 'our own follow-up prompt does not lift the lock');
   await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: 'please fix the build', session_id: 'x', cwd: home });
   assert.equal((await pre('Read', { file_path: 'a' })).out, '', 'a real prompt does');
+});
+
+test('a saved place from before the host restarted (ids began again at 1) does not hide the new thread: the seat still hears what it is asked', async () => {
+  const { writeFileSync } = await import('node:fs');
+  assert.equal((await run(['join', addr, 'Rex', '--key', KEY, '--chatty', '--claude'])).status, 0);
+  writeFileSync(join(home, 'seats', 'Rex.cursor'), '83'); // what a seat saved while talking to the host's previous life
+  const stop = run(['hook', '--seat', 'Rex'], { hook_event_name: 'Stop', session_id: 'r', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
+  await until(() => store.snapshot().find((m) => m.name === 'Rex')?.status === 'listening');
+  await new Promise((r) => setTimeout(r, 400));
+  buzz.post({ from: 'tom', kind: 'human', text: 'Rex, are you there after the restart?' });
+  const handed = JSON.parse((await stop).out);
+  assert.equal(handed.decision, 'block');
+  assert.match(handed.reason, /Rex, are you there after the restart\?/);
+  assert.match(JSON.parse(readFileSync(join(home, 'seats', 'Rex.cursor'), 'utf8')).epoch, /^[0-9a-f]{8}$/, 'the place is saved with the thread it belongs to');
+  await run(['leave', '--seat', 'Rex']);
+  writeFileSync(join(home, 'seats', 'Nina.cursor'), JSON.stringify({ id: buzz.list(1).at(-1).id, epoch: buzz.epoch })); // the next test starts from now, as Nina would have
 });
 
 test('the same Stop hook lets the turn end when nobody speaks, and a seat that is not chatty never listens', async () => {

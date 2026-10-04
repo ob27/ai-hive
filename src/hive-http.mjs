@@ -174,9 +174,11 @@ export function handleBuzzRead(req, res, buzz, key) {
     const wait = Math.min(Math.max(Number(q.get('wait')) || 0, 0), 110) * 1000;
     const ctl = { gone: false };
     req.on('close', () => { ctl.gone = true; });
+    res.setHeader('x-hive-epoch', buzz.epoch);
     buzz.waitFor(Number(q.get('after')) || 0, q.get('as') ?? '', wait).then((lines) => { if (!ctl.gone) json(res, 200, lines); });
     return true;
   }
+  res.setHeader('x-hive-epoch', buzz.epoch);
   json(res, 200, buzz.list(Number(q.get('limit')) || 20));
   return true;
 }

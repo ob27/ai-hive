@@ -10,6 +10,8 @@
 
 import { CHAT_DEFAULTS, repliesTo } from './chat.mjs';
 
+import { randomBytes } from 'node:crypto';
+
 export const BUZZ_DEFAULTS = { keep: 200, maxChars: 280, perHour: 12, humanPerHour: 30, ...CHAT_DEFAULTS };
 
 export class BuzzLog {
@@ -17,6 +19,7 @@ export class BuzzLog {
   constructor({ now = Date.now, invite = null, ...config } = {}) {
     this.now = now;
     this.invite = invite;
+    this.epoch = randomBytes(4).toString('hex'); // names this thread: the log lives in memory, so a restarted host starts its ids again, and an agent's saved place must not outlive that
     this.waiting = new Map(); // name -> open `hive listen` waits: the only proof an agent is actually in the chat
     this.onListenChange = null; // (name): that agent started or stopped waiting in the chat
     this.onDelivered = null;  // (name, lines): `hive listen` just handed these lines to an agent, so it is now writing its answer

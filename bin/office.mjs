@@ -20,7 +20,7 @@ import { sampleMachine } from '../src/machine-stats.mjs';
 import { logSummary, heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
-import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, noteListen, noticeOutput, readCursor, writeCursor } from '../src/listenloop.mjs';
+import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, listenWithCursor, noteListen, noticeOutput, writeCursor } from '../src/listenloop.mjs';
 
 const HELP = `hive — join the AI Hive. (The older \`office\` command still works: it is the same CLI.)
 
@@ -312,8 +312,7 @@ switch (cmd) {
     const seat = loadSeat(flag('seat'));
     if (!seat.chatty) die('this seat did not join with --chatty: rejoin with it to take part in the buzz');
     const wait = Math.min(Number(flag('wait')) || 100, 110);
-    const after = await readCursor(seat);
-    const r = await listenBuzz(seat, after, wait);
+    const r = await listenWithCursor(seat, wait);
     if (!r.ok) die(r.error);
     if (!r.messages.length) {
       const q = noteListen(seat, true, wait);
@@ -322,7 +321,7 @@ switch (cmd) {
     }
     noteListen(seat, false);
     for (const m of r.messages) console.log(formatLine(m));
-    writeCursor(seat, r.messages[r.messages.length - 1].id);
+    writeCursor(seat, r.messages[r.messages.length - 1].id, r.epoch);
     console.log('Reply with: hive buzz --reply <id> "<your line>"   then   hive listen   again.');
     break;
   }

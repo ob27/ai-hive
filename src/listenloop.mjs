@@ -68,13 +68,34 @@ export const chatLocked = (seat) => readLock(seat) !== null;
 export const clearChatLock = (seat) => rmSync(lockFile(seat), { force: true });
 
 /** The id of the last line this seat has been handed, so a line is never delivered twice. First time: only what is said from now on. */
-export async function readCursor(seat) {
-  const n = Number(existsSync(cursorFile(seat)) ? readFileSync(cursorFile(seat), 'utf8') : NaN);
-  if (Number.isFinite(n)) return n;
-  const r = await readBuzz(seat, 1);
-  return r.ok && r.messages.length ? r.messages[r.messages.length - 1].id : 0;
+export const writeCursor = (seat, id, epoch) => writeFileSync(cursorFile(seat), JSON.stringify({ id, epoch }));
+const readCursorFile = (seat) => {
+  try {
+    const raw = readFileSync(cursorFile(seat), 'utf8').trim();
+    if (/^\d+$/.test(raw)) return { id: Number(raw), epoch: undefined }; // an older seat's plain number
+    const j = JSON.parse(raw);
+    return Number.isFinite(j?.id) ? { id: j.id, epoch: j.epoch } : null;
+  } catch { return null; }
+};
+
+/**
+ * Wait in the chat from where this seat left off. The host keeps the thread in memory, so when it restarts its ids begin again at 1 and a saved
+ * place (say #83) would hide every new line for ever: the thread carries an epoch, and a place saved under a different one is dropped. The first
+ * time there is no place, and only what is said from now on is wanted.
+ * -> { ok, messages, epoch } as listenBuzz.
+ */
+export async function listenWithCursor(seat, waitSec) {
+  const cur = readCursorFile(seat);
+  let after = cur?.id;
+  if (after === undefined) { const r0 = await readBuzz(seat, 1); after = r0.ok && r0.messages.length ? r0.messages[r0.messages.length - 1].id : 0; if (r0.ok && r0.epoch) writeCursor(seat, after, r0.epoch); }
+  let r = await listenBuzz(seat, after, waitSec);
+  if (r.ok && r.epoch && cur && cur.epoch !== r.epoch) {
+    r = await listenBuzz(seat, 0, waitSec); // the host restarted (or this place predates epochs): the thread it has now, from the top (stale and not-for-you lines are filtered by the host)
+    if (r.ok && !r.messages.length) writeCursor(seat, 0, r.epoch);
+  }
+  return r;
 }
-export const writeCursor = (seat, id) => writeFileSync(cursorFile(seat), String(id));
+
 
 // A manual `hive listen` loop (an agent asked to sit in the chat) must not run for ever: after a few quiet listens in a row the Hive tells it
 // to stop and go back to what it was doing. (The end-of-turn hook already ends its own wait when nobody speaks.)
@@ -126,10 +147,9 @@ export async function listenAtStop(seat, payload, { wait = LISTEN_WAIT() } = {})
   if (!seat.chatty || wait <= 0) return null;
   const lock = readLock(seat);
   if ((lock?.turns ?? 0) >= MAX_CHAT_TURNS) { clearChatLock(seat); return null; }
-  const after = await readCursor(seat);
-  const r = await listenBuzz(seat, after, wait);
+  const r = await listenWithCursor(seat, wait);
   if (!r.ok || !r.messages.length) { clearChatLock(seat); return null; }
-  writeCursor(seat, r.messages[r.messages.length - 1].id);
+  writeCursor(seat, r.messages[r.messages.length - 1].id, r.epoch);
   writeFileSync(lockFile(seat), JSON.stringify({ at: Date.now(), turns: (lock?.turns ?? 0) + 1 }));
   return continuation(payload, chatPrompt(r.messages));
 }

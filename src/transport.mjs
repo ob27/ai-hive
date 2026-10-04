@@ -43,7 +43,7 @@ export async function postBuzz(seat, text, replyTo) {
 export async function readBuzz(seat, limit = 20) {
   try {
     const res = await fetch(`${seat.url}/buzz?limit=${limit}`, { headers: { authorization: `Bearer ${seat.token}` }, signal: AbortSignal.timeout(3000) });
-    return res.ok ? { ok: true, messages: await res.json() } : { ok: false, error: `the hive answered ${res.status}` };
+    return res.ok ? { ok: true, messages: await res.json(), epoch: res.headers.get('x-hive-epoch') ?? undefined } : { ok: false, error: `the hive answered ${res.status}` };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -53,7 +53,7 @@ export async function readBuzz(seat, limit = 20) {
 export async function listenBuzz(seat, afterId, waitSec) {
   try {
     const res = await fetch(`${seat.url}/buzz?after=${afterId}&wait=${waitSec}&as=${encodeURIComponent(seat.name)}`, { headers: { authorization: `Bearer ${seat.token}` }, signal: AbortSignal.timeout((waitSec + 10) * 1000) });
-    return res.ok ? { ok: true, messages: await res.json() } : { ok: false, error: `the hive answered ${res.status}` };
+    return res.ok ? { ok: true, messages: await res.json(), epoch: res.headers.get('x-hive-epoch') ?? undefined } : { ok: false, error: `the hive answered ${res.status}` };
   } catch (err) {
     return { ok: false, error: err.message };
   }
