@@ -21,6 +21,12 @@ export const LISTENING = [
   'Waiting on your next move', 'Nothing left on my plate. Yours?',
 ];
 
+// What the card says while the agent is writing a reply to someone ({name} is filled in): never an idle line, it is busy.
+export const TYPING = [
+  '{name} is typing…', '{name} is writing a reply…', '{name} is composing a response…', '{name} is typing a reply…',
+  '{name} is putting a reply together…', '{name} is finding the words…', '{name} is drafting a reply…', '{name} is tapping out a response…',
+];
+
 /** A stable pick: the same seed (agent + when it stopped) always gives the same line, so the card does not flicker on every refresh. */
 export function pick(list, seed) {
   let h = 2166136261;

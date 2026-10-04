@@ -10,7 +10,7 @@
 //   { id, kind, name, project?, status, statusLabel, activity?, updatedAt }
 // Time is injected (`now`) so every rule is testable without waiting.
 import { basename } from 'node:path';
-import { AWAY, LISTENING, pick } from './phrases.mjs';
+import { AWAY, LISTENING, TYPING, pick } from './phrases.mjs';
 import { toolClass, turnWeight } from './production-score.mjs';
 import { DEFAULT_RULES, evaluateRules, parseRules } from './service-rules.mjs';
 
@@ -153,7 +153,7 @@ export class HiveStore {
   setComposing(name, to, ttlMs = 90_000) {
     const a = this.findAgent(name);
     if (!a) return;
-    a.composing = { to: to === 'human' ? 'human' : 'agent', until: this.now() + ttlMs };
+    a.composing = { to: to === 'human' ? 'human' : 'agent', since: this.now(), until: this.now() + ttlMs };
     this.emit();
   }
 
@@ -273,9 +273,13 @@ export class HiveStore {
       let status, label, why;
       const noHooks = Array.isArray(a.hooks) && a.hooks.length === 0
         ? ' It joined without hooks, so only what it says with `hive say` shows here: rejoin with --claude (or your tool\'s flag) to report its real activity.' : '';
+      const typing = a.composing && a.composing.until > now ? a.composing : null; // writing a reply to someone right now
       if (age >= c.ghostAfterMs) {
         [status, label] = ['ghost', 'Ghost'];
         why = `Silent for ${ago(age)}, so most likely just not active (not a failure). It drops off the board in ${ago(c.ghostAfterMs + c.ghostDropMs - age)}.`;
+      } else if (typing) {
+        [status, label] = ['active', 'Typing…'];
+        why = `Writing a reply to ${typing.to === 'human' ? 'a person' : 'another agent'} in Hive Chat.`;
       } else if (isListening(a, now, c, this.probe)) {
         [status, label] = ['listening', 'Listening'];
         why = `Finished its turn ${ago(age)} ago and is sitting in the chat, so it will answer if spoken to.${noHooks}`;
@@ -298,7 +302,7 @@ export class HiveStore {
       }
       if (status === 'listening') a.lastListeningAt = now;
       const chatOpen = a.chatty === true && status !== 'ghost' && (status === 'listening' || (a.lastListeningAt !== undefined && now - a.lastListeningAt < c.chatGraceMs));
-      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, chatOpen, modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
+      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: typing && status === 'active' ? pick(TYPING, `${a.id}:${typing.since}`).replace('{name}', a.name) : status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, chatOpen, modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
     }
     for (const s of [...this.services.values()]) {
       const age = now - s.lastAt;

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { HiveStore } from '../src/hive.mjs';
 import { BuzzLog } from '../src/buzz.mjs';
 import { chooseInvitees, botDepth, NOBODY_MESSAGE } from '../src/chat.mjs';
+import { AWAY, TYPING } from '../src/phrases.mjs';
 import { allowedInChat, continuation, denial } from '../src/listenloop.mjs';
 import { createIngest } from '../src/ingest.mjs';
 import { handleHumanBuzz } from '../src/hive-http.mjs';
@@ -45,7 +46,9 @@ test('with the host watching, Listening means a real open wait: a fresh join, or
   assert.equal(store.snapshot()[0].status, 'listening');
   buzz.post({ from: 'tom', kind: 'human', text: 'hi' });
   await wait;
-  assert.equal(store.snapshot()[0].status, 'idle', 'the wait ended: it is no longer in the chat until it listens again');
+  assert.deepEqual([store.snapshot()[0].status, store.snapshot()[0].statusLabel], ['active', 'Typing…'], 'it was handed the line: it is writing its answer');
+  buzz.post({ from: 'Tim', kind: 'agent', text: 'hello' });
+  assert.equal(store.snapshot()[0].status, 'idle', 'it has answered and the wait is over: it is no longer in the chat until it listens again');
 });
 
 test('chatReady is true only while a chatty agent is listening: idle ones are away and busy ones will not answer for minutes', () => {
@@ -259,4 +262,19 @@ test('an agent asked to listen shows as Listening while it waits in `hive listen
   assert.deepEqual([store.snapshot()[0].status, store.snapshot()[0].statusLabel, store.chatReady().ok], ['listening', 'Listening', true]);
   await wait;
   assert.equal(store.snapshot()[0].status, 'active', 'the wait is over and the turn is still going');
+});
+
+test('while an agent is writing a reply its card says it is typing, never an idle line, and goes back afterwards', () => {
+  const c = clock(); const store = new HiveStore({ now: c.now });
+  store.observe(ev('Leslie', 'Stop'), { chatty: true });
+  c.advance(2 * MIN);
+  assert.ok(AWAY.includes(store.snapshot()[0].activity), 'idle: one of the away lines');
+  store.setComposing('Leslie', 'human');
+  const m = store.snapshot()[0];
+  assert.deepEqual([m.status, m.statusLabel, m.composing], ['active', 'Typing…', 'human']);
+  assert.ok(TYPING.map((t) => t.replace('{name}', 'Leslie')).includes(m.activity), m.activity);
+  assert.equal(store.snapshot()[0].activity, m.activity, 'the line does not flicker between refreshes');
+  assert.match(m.statusReason, /Writing a reply to a person/);
+  store.clearComposing('Leslie');
+  assert.ok(AWAY.includes(store.snapshot()[0].activity), 'back to the away line once it has spoken');
 });
