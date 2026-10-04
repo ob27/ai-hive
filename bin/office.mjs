@@ -16,7 +16,7 @@ import { startProxy } from '../src/proxy.mjs';
 // that the CLI download served to seat machines does not include, so a static import would crash every `join`.
 import { defaultName } from '../src/names.mjs';
 import { installCli, reportCommand } from '../src/install.mjs';
-import { heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
+import { logSummary, heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
 import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, noteListen, noticeOutput, readCursor, writeCursor } from '../src/listenloop.mjs';
@@ -236,14 +236,25 @@ switch (cmd) {
   }
   case 'heartbeat': {
     const id = flag('id');
-    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30]');
+    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs]');
+    const logs = bool('logs'); // the message is the host's own log tail (the host's Hive Web App heartbeat)
     const fields = { id, name: flag('name'), project: flag('project'), status: flag('status'), message: flag('message'), ttl: flag('ttl') };
     const every = flag('every');
     let url = flag('url') ?? process.env.HIVE_URL ?? process.env.OFFICE_URL, key = flag('key') ?? process.env.HIVE_KEY ?? process.env.OFFICE_KEY;
     if (!url || !key) { try { const seat = loadSeat(); url ??= seat.url; key ??= seat.token; } catch { /* no seat: fall through to the error below */ } }
     if (!url || !key) die('no host or key — pass --url and --key, set HIVE_URL / HIVE_KEY, or join the hive first');
     url = normalizeUrl(url);
+    let logAfter = 0, lastLine = null;
     const beat = async (extra = {}) => {
+      if (logs && extra.status !== 'gone') {
+        try {
+          const res = await fetch(`${url}/api/logs?after=${logAfter}&limit=100`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(3000) });
+          const entries = res.ok ? await res.json() : [];
+          if (entries.length) logAfter = entries.at(-1).id;
+          const s = logSummary(entries, lastLine);
+          lastLine = s.last; extra = { status: s.status, message: s.message, ...extra };
+        } catch { /* the host will not answer a heartbeat either: that failure is reported below */ }
+      }
       const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra }));
       if (!r.ok) console.error(`hive: heartbeat failed: ${r.error}`);
       return r.ok;

@@ -58,6 +58,8 @@ The screen: `http://<host>:3100/` (also `/hive/`). One tile per agent or service
   `hive heartbeat --id dsl --name "DSL Service" --project Dm-Archive --message "DLS Worker" --url <host>:3101 --key <key> --every 30`
   `--status degraded` ("I think I'm leaking memory") and `--status failure` show as an active failure; a service that stops reporting for its
   `--ttl` (default 60 s) shows as *Not responding, likely failed*; `--every` keeps reporting and sends `gone` on Ctrl+C. Services do not ghost.
+  `--logs` makes the service's message the host's own log tail (skipping the wall's polling and heartbeats; a server error shows as Degraded),
+  which is how to put the Hive's own web app on its wall: `hive heartbeat --id hive-web --name "Hive Web App" --logs --every 30 --url <host>:3101 --key <key>`.
 - **Services** always appear as orbs, in a colour of their own (stable per name). Pick the orb style (Spark, Strato or Chorus) on the Config page.
 - **Order**: worst first (failure, stalled, active, listening, idle, ghost) so trouble is on page one.
 - **Routes**: `GET /hive/state` (JSON), `GET /hive/stream` (server-sent events), both read-only like the screen; `POST /api/heartbeat` needs the key.
