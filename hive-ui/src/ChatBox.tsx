@@ -66,9 +66,12 @@ export function ChatBox({ send, info, available, replyTo, onCancelReply, name: s
         placeholder="Say something to the hive"
         maxRows={3}
         onSend={(value) => {
+          setProblem(null);
           setText("");
-          void send(name.trim(), value, replyTo?.id).then((p) => setProblem(p));
-          onCancelReply();
+          void send(name.trim(), value, replyTo?.id).then((p) => {
+            if (p) { setProblem(p); setText((t) => t || value); } // not sent: put the words back, so a refused post is never lost
+            else onCancelReply();
+          });
         }}
       />
       </div>

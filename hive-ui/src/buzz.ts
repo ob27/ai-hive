@@ -81,6 +81,8 @@ export function useBuzz(demo: boolean): { messages: BuzzMessage[]; send: (name: 
     };
   }, [demo]);
 
+  const refresh = useCallback(() => fetch(`${BASE}buzz`).then((r) => (r.ok ? r.json() : null)).then((m: BuzzMessage[] | null) => { if (m) setMessages(m); }).catch(() => undefined), []);
+
   /** Resolves null on success, or a short reason to show the person. */
   const send = useCallback(
     async (name: string, text: string, replyTo?: number): Promise<string | null> => {
@@ -97,14 +99,14 @@ export function useBuzz(demo: boolean): { messages: BuzzMessage[]; send: (name: 
       }
       try {
         const res = await fetch(`${BASE}buzz`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, text, ...(replyTo ? { replyTo } : {}) }) });
-        if (res.ok) return null;
+        if (res.ok) { void refresh(); return null; } // show it now, without waiting for the live stream to push it
         if (res.status === 503) return AWAY_MESSAGE; // no chatty agent is listening
         return ((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The hive answered ${res.status}.`;
       } catch {
         return "Could not reach the hive.";
       }
     },
-    [demo],
+    [demo, refresh],
   );
 
   return { messages, send, info };
