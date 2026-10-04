@@ -1,0 +1,209 @@
+import { after, before, test } from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { HiveStore } from '../src/hive.mjs';
+import { BuzzLog } from '../src/buzz.mjs';
+import { chooseInvitees, botDepth, AWAY_MESSAGE } from '../src/chat.mjs';
+import { allowedInChat, continuation, denial } from '../src/listenloop.mjs';
+import { createIngest } from '../src/ingest.mjs';
+import { handleHumanBuzz } from '../src/hive-http.mjs';
+
+const MIN = 60_000;
+const clock = () => { let t = 1_000_000; return { now: () => t, advance: (ms) => { t += ms; } }; };
+const ev = (name, hook_event_name, extra = {}) => ({ session_id: `s-${name}`, hook_event_name, cwd: `/office/${name}`, ...extra });
+/** A hive with these chatty agents: listening (just stopped) or active (mid-turn) or idle (stopped long ago). */
+function room(c, spec) {
+  const store = new HiveStore({ now: c.now });
+  const buzz = new BuzzLog({ now: c.now, invite: (m, thread) => chooseInvitees(store, thread, m, { rand: () => 0.5 }) });
+  for (const [name, state] of Object.entries(spec)) {
+    store.observe(ev(name, state === 'active' ? 'PreToolUse' : 'Stop', { tool_name: 'Bash', tool_input: { command: 'work' } }), { chatty: true });
+  }
+  for (const [name, state] of Object.entries(spec)) if (state === 'idle') store.agents.get(`s-${name}`).listenFrom -= 5 * MIN;
+  return { store, buzz };
+}
+
+test('a chatty agent that just finished is Listening, then wanders off; nobody else is ever Listening', () => {
+  const c = clock(); const s = new HiveStore({ now: c.now });
+  s.observe(ev('Ada', 'Stop'), { chatty: true }); s.observe(ev('Bob', 'Stop'), { chatty: false });
+  assert.deepEqual(s.snapshot().map((m) => [m.name, m.status, m.statusLabel]).sort(), [['Ada', 'listening', 'Listening'], ['Bob', 'idle', 'Idle']]);
+  c.advance(2 * MIN);
+  assert.equal(s.snapshot().find((m) => m.name === 'Ada').status, 'idle');
+  s.observe(ev('Ada', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }), { chatty: true });
+  assert.equal(s.snapshot().find((m) => m.name === 'Ada').status, 'active');
+});
+
+test('with the host watching, Listening means a real open wait: a fresh join, or a turn that ended with no hook, is not listening', async () => {
+  const c = clock(); const store = new HiveStore({ now: c.now }); const buzz = new BuzzLog({ now: c.now });
+  store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit();
+  store.observe(ev('Tim', 'Stop'), { chatty: true }); // what `hive join` reports
+  assert.equal(store.snapshot()[0].status, 'idle');
+  const wait = buzz.waitFor(0, 'Tim', 5000);
+  assert.equal(store.snapshot()[0].status, 'listening');
+  buzz.post({ from: 'tom', kind: 'human', text: 'hi' });
+  await wait;
+  assert.equal(store.snapshot()[0].status, 'idle', 'the wait ended: it is no longer in the chat until it listens again');
+});
+
+test('chatReady is true only while a chatty agent is listening: idle ones are away and busy ones will not answer for minutes', () => {
+  const c = clock();
+  assert.equal(room(c, { A: 'idle', B: 'idle' }).store.chatReady().ok, false);
+  assert.equal(room(c, { A: 'idle', B: 'active' }).store.chatReady().ok, false, 'busy in the middle of a turn');
+  assert.deepEqual(room(c, { A: 'idle', B: 'listening', C: 'active' }).store.chatReady().listening, ['B']);
+});
+
+test('a person\'s line invites at most two agents, free listeners before busy ones, never an idle one', () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening', B: 'listening', C: 'listening', D: 'active', E: 'idle' });
+  const { message } = buzz.post({ from: 'tom', kind: 'human', text: 'hi' });
+  assert.equal(message.invited.length, 2);
+  assert.ok(message.invited.every((n) => ['A', 'B', 'C'].includes(n)));
+});
+
+test('a system line that merely names an agent ("X was tapped on the shoulder") invites nobody', () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening' });
+  assert.deepEqual(buzz.post({ from: 'hive', kind: 'system', text: 'tom tapped A on the shoulder.' }).message.invited, []);
+});
+
+test('a name in the line is always invited, and ambient lines invite nobody', () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening', B: 'listening', C: 'listening' });
+  assert.ok(buzz.post({ from: 'tom', kind: 'human', text: 'C, how is the survey going?' }).message.invited.includes('C'));
+  assert.deepEqual(buzz.post({ from: 'A', kind: 'agent', text: 'phew, that was a hard one' }).message.invited, []);
+  assert.deepEqual(buzz.post({ from: 'hive', kind: 'system', text: 'D joined the hive.' }).message.invited, []);
+  assert.equal(buzz.post({ from: 'hive', kind: 'system', text: 'DSL Service stopped responding.' }).message.invited.length, 1);
+});
+
+test('only invited agents hear a line, the second after the first has answered, and never their own', async () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening', B: 'listening', C: 'listening' });
+  const line = buzz.post({ from: 'tom', kind: 'human', text: 'hi' }).message;
+  const [first, second] = line.invited; const outsider = ['A', 'B', 'C'].find((n) => !line.invited.includes(n));
+  assert.equal((await buzz.waitFor(0, outsider, 0)).length, 0, 'not invited: nothing wakes it');
+  assert.equal((await buzz.waitFor(0, first, 0)).length, 1);
+  assert.equal((await buzz.waitFor(0, second, 0)).length, 0, 'the second waits for the first');
+  c.advance(16_000);
+  assert.equal((await buzz.waitFor(0, second, 0)).length, 1, 'or for the stagger to pass');
+  c.advance(4 * MIN);
+  assert.equal((await buzz.waitFor(0, first, 0)).length, 0, 'a stale line is no longer worth waking anyone');
+});
+
+test('a listen that would end just before its queued line becomes its own is stretched to catch it', async () => {
+  const buzz = new BuzzLog({ staggerMs: 200, invite: () => ['A', 'B'] }); // real clock: this is about timers
+  const wait = buzz.waitFor(0, 'B', 300);
+  setTimeout(() => buzz.post({ from: 'tom', kind: 'human', text: 'hi' }), 200); // B is second: eligible at +400ms, after its 300ms wait would have ended
+  const lines = await wait;
+  assert.equal(lines.length, 1);
+  assert.equal(buzz.isWaiting('B'), false);
+  assert.deepEqual(await buzz.waitFor(lines[0].id, 'B', 50), [], 'and a wait with nothing queued still ends on time');
+});
+
+test('a reply from an agent that was not invited, or to a line that has its answers, is refused', () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening', B: 'listening', C: 'listening' });
+  const line = buzz.post({ from: 'tom', kind: 'human', text: 'hi' }).message;
+  const outsider = ['A', 'B', 'C'].find((n) => !line.invited.includes(n));
+  assert.equal(buzz.post({ from: outsider, kind: 'agent', text: 'me too', replyTo: line.id }).status, 409);
+  assert.equal(buzz.post({ from: line.invited[0], kind: 'agent', text: 'hello', replyTo: line.id }).ok, true);
+  assert.equal(buzz.post({ from: line.invited[1], kind: 'agent', text: 'hello again', replyTo: line.id }).ok, true);
+  assert.equal(buzz.post({ from: outsider, kind: 'agent', text: 'third', replyTo: line.id }).status, 409);
+});
+
+test('bots do not keep each other talking: a bot answer invites one more bot until the thread is two deep', () => {
+  const c = clock(); const { buzz } = room(c, { A: 'listening', B: 'listening', C: 'listening' });
+  const q = buzz.post({ from: 'tom', kind: 'human', text: 'hi' }).message;
+  const a1 = buzz.post({ from: q.invited[0], kind: 'agent', text: 'hello', replyTo: q.id }).message;
+  assert.equal(a1.invited.length, 1);
+  assert.ok(!a1.invited.includes(q.invited[0]), 'not the bot that just spoke');
+  const a2 = buzz.post({ from: a1.invited[0], kind: 'agent', text: 'hi back', replyTo: a1.id }).message;
+  assert.equal(botDepth(buzz.list(20), a2), 2);
+  assert.deepEqual(a2.invited, [], 'two bot turns deep: the thread goes quiet');
+});
+
+test('the wall refuses a person\'s line when nobody is listening, with the message to show', async () => {
+  const c = clock(); const { store, buzz } = room(c, { A: 'idle', B: 'idle' });
+  const srv = http.createServer((req, res) => handleHumanBuzz(req, res, buzz, store) || res.writeHead(404).end());
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const post = () => fetch(`http://127.0.0.1:${srv.address().port}/hive/buzz`, { method: 'POST', body: JSON.stringify({ name: 'tom', text: 'hi' }) });
+  const refused = await post();
+  assert.deepEqual([refused.status, (await refused.json()).error], [503, AWAY_MESSAGE]);
+  store.observe(ev('A', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }), { chatty: true });
+  assert.equal((await post()).status, 503, 'busy in the middle of a turn: it will not answer for minutes');
+  store.observe(ev('A', 'Stop'), { chatty: true });
+  assert.equal((await post()).status, 204, 'finished its turn and listening: now it can');
+  srv.close();
+});
+
+test('each tool is told to carry on, and to deny a tool, in its own hook format', () => {
+  assert.deepEqual(JSON.parse(continuation({ hook_event_name: 'Stop' }, 'x')), { decision: 'block', reason: 'x' });
+  assert.deepEqual(JSON.parse(continuation({ hook_event_name: 'AfterAgent' }, 'x')), { decision: 'deny', reason: 'x' });
+  assert.deepEqual(JSON.parse(continuation({ hook_event_name: 'stop' }, 'x')), { followup_message: 'x' });
+  assert.equal(JSON.parse(denial({ hook_event_name: 'PreToolUse' }, 'no')).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(JSON.parse(denial({ hook_event_name: 'BeforeTool' }, 'no')).decision, 'deny');
+  assert.equal(JSON.parse(denial({ hook_event_name: 'beforeReadFile' }, 'no')).permission, 'deny');
+  assert.equal(denial({ hook_event_name: 'afterFileEdit' }, 'no'), null, 'Cursor cannot deny after the fact');
+});
+
+test('a chat turn may use the web and the hive chat commands, and nothing else', () => {
+  const tool = (tool_name, command) => ({ hook_event_name: 'PreToolUse', tool_name, tool_input: command === undefined ? { file_path: '/x' } : { command } });
+  assert.ok(allowedInChat(tool('WebSearch')));
+  assert.ok(allowedInChat(tool('Bash', 'hive buzz --reply 12 "same here (honestly)"')));
+  assert.ok(allowedInChat(tool('Bash', 'hive listen')));
+  for (const bad of [tool('Read'), tool('Edit'), tool('Write'), tool('Bash', 'cat secrets.txt'), tool('Bash', 'hive buzz "x"; rm -rf ~'), tool('Bash', 'hive buzz "$(cat .env)"'), tool('Bash', 'hive buzz x | sh')]) assert.equal(allowedInChat(bad), false, JSON.stringify(bad));
+  assert.ok(allowedInChat({ hook_event_name: 'BeforeTool', tool_name: 'google_web_search', tool_input: {} }));
+  assert.equal(allowedInChat({ hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: {} }), false);
+});
+
+// --- the loop, end to end: a real CLI seat's Stop hook sits in the chat and hands it a line ---
+const KEY = 'chat-key';
+const CLI = join(import.meta.dirname, '..', 'bin', 'office.mjs');
+let store, buzz, server, addr, home;
+before(async () => {
+  store = new HiveStore(); buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(store, thread, m) });
+  store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit();
+  server = http.createServer(createIngest({ hive: store, buzz, key: KEY, defaultBase: () => addr }));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  addr = `127.0.0.1:${server.address().port}`;
+  home = mkdtempSync(join(tmpdir(), 'hive-loop-'));
+});
+after(() => server.close());
+
+const run = (args, stdin, env = {}) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [CLI, ...args], { cwd: home, env: { ...process.env, OFFICE_HOME: home, OFFICE_SEAT: '', HIVE_SEAT: '', ...env } });
+  let out = '', err = '';
+  child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { err += d; });
+  child.on('close', (status) => resolve({ status, out, err }));
+  if (stdin !== undefined) child.stdin.end(JSON.stringify(stdin)); else child.stdin.end();
+});
+const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 50)); assert.ok(fn(), 'timed out'); };
+
+test('a chatty seat\'s Stop hook listens, hands over the line that was asked, and locks the turn to chat-only tools until a real prompt', async () => {
+  assert.equal((await run(['join', addr, 'Nina', '--key', KEY, '--chatty', '--claude'])).status, 0);
+  const stop = run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'x', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
+  await until(() => store.snapshot().find((m) => m.name === 'Nina')?.status === 'listening');
+  await new Promise((r) => setTimeout(r, 700)); // the hook has taken its place in the chat (its first look fixes where "from now on" starts)
+  buzz.post({ from: 'tom', kind: 'human', text: 'hi everyone' });
+  const handed = JSON.parse((await stop).out);
+  assert.equal(handed.decision, 'block');
+  assert.match(handed.reason, /^\[Hive chat\][\s\S]*tom \(human\): hi everyone[\s\S]*hive buzz --reply/);
+  assert.match(handed.reason, /Do not read, open, search, edit or run anything/);
+
+  const pre = (tool_name, tool_input) => run(['hook', '--seat', 'Nina'], { hook_event_name: 'PreToolUse', tool_name, tool_input, session_id: 'x', cwd: home });
+  assert.equal(JSON.parse((await pre('Read', { file_path: 'secrets.env' })).out).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal((await pre('Bash', { command: 'hive buzz --reply 3 "hello"' })).out, '', 'the chat command is allowed');
+  assert.equal((await pre('WebSearch', { query: 'x' })).out, '', 'a web lookup is allowed');
+
+  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: handed.reason, session_id: 'x', cwd: home });
+  assert.ok(JSON.parse((await pre('Read', { file_path: 'a' })).out), 'our own follow-up prompt does not lift the lock');
+  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: 'please fix the build', session_id: 'x', cwd: home });
+  assert.equal((await pre('Read', { file_path: 'a' })).out, '', 'a real prompt does');
+});
+
+test('the same Stop hook lets the turn end when nobody speaks, and a seat that is not chatty never listens', async () => {
+  const quiet = await run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'x', cwd: home }, { HIVE_LISTEN_WAIT: '1' });
+  assert.equal(quiet.out, '');
+  assert.equal((await run(['join', addr, 'Pat', '--key', KEY, '--claude'])).status, 0);
+  const t0 = Date.now();
+  const r = await run(['hook', '--seat', 'Pat'], { hook_event_name: 'Stop', session_id: 'y', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
+  assert.equal(r.out, ''); assert.ok(Date.now() - t0 < 4000, 'it did not wait');
+  await run(['leave', '--seat', 'Pat']); await run(['leave', '--seat', 'Nina']);
+});

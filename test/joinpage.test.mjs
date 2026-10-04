@@ -21,15 +21,16 @@ test('a hostile key cannot break out of the script block', () => {
   assert.doesNotMatch(html, /<\/script><script>alert/);
 });
 
-test('host config: prefill defaults on, flags are remembered, key persists and rotates', async () => {
+test('host config: prefill defaults OFF (the key is only shown to people you give it to), flags are remembered, key persists and rotates', async () => {
   process.env.OFFICE_HOME = mkdtempSync(join(tmpdir(), 'wo-cfg-'));
   const { loadHostConfig } = await import('../src/host.mjs');
   const first = loadHostConfig();
-  assert.equal(first.prefillKey, true);
+  assert.equal(first.prefillKey, false);
   assert.equal(loadHostConfig().key, first.key, 'key is stable across restarts');
-  assert.equal(loadHostConfig({ prefillKey: false }).prefillKey, false);
-  assert.equal(loadHostConfig().prefillKey, false, 'the choice is remembered');
   assert.equal(loadHostConfig({ prefillKey: true }).prefillKey, true);
+  assert.equal(loadHostConfig().prefillKey, true, 'the choice is remembered');
+  assert.equal(loadHostConfig({ prefillKey: false }).prefillKey, false);
+  loadHostConfig({ prefillKey: true });
   assert.notEqual(loadHostConfig({ rotate: true }).key, first.key);
   assert.equal(JSON.parse(readFileSync(join(process.env.OFFICE_HOME, 'host.json'), 'utf8')).prefillKey, true);
 });

@@ -1,0 +1,27 @@
+{
+  "name": "ai-hive-ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "The Hive wall screen: Rebar UI's AgentWall fed by the ai-hive host. Linked to a sibling rebarui checkout so the component can be tuned against live data.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@rebar-ui/placement": "link:../../rebarui/packages/placement",
+    "@rebar-ui/theme-clean": "link:../../rebarui/packages/theme-clean",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "rebar-ui": "link:../../rebarui/packages/core"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "typescript": "^5",
+    "vite": "^7"
+  }
+}

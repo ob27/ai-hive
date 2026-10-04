@@ -14,7 +14,7 @@ import { applyAction } from './chirp.mjs';
 //   kind 1, k=['requests', n, 'result']           the turn finished
 // The response array is rewritten in overlapping batches, so tool calls are keyed by toolCallId, never by position.
 
-// Copilot tool ids → [Pixel Agents tool, label shown when the tool has no file]. Anything not listed becomes a
+// Copilot tool ids → [tool name shown on the wall, label shown when the tool has no file]. Anything not listed becomes a
 // generic step. Labels never include commands or arguments: the screen is public and commands can hold secrets.
 const TOOLS = {
   copilot_readFile: ['Read'], copilot_viewImage: ['Read'], read_page: ['Read'],

@@ -1,8 +1,7 @@
-// Builds Claude-hook-shaped payloads, the only wire format Pixel Agents' server accepts
-// (POST /api/hooks/claude). Everything in this CLI — chirps, the wrapper, the proxy, real
-// Claude hooks — reduces to these four events.
+// Builds Claude-hook-shaped payloads, the wire format the host's ingest takes (POST /api/hooks/claude).
+// Everything in this CLI — chirps, the wrapper, the proxy, real agent hooks — reduces to these events.
 
-// Free-text chirps get mapped to a tool Pixel Agents already knows how to animate.
+// Free-text chirps get mapped to a familiar tool name, so the wall can show what kind of step it is.
 const VERBS = [
   [/\b(read|open|view|look|inspect|check)/i, 'Read'],
   [/\b(search|grep|find|scan|list)/i, 'Grep'],
@@ -13,8 +12,7 @@ const VERBS = [
 
 export function toolForText(text) {
   for (const [re, tool] of VERBS) if (re.test(text)) return tool;
-  // Bash is the only tool whose status echoes free text ("Running: <text>", cut at 30 chars). Task looks
-  // tempting but Pixel Agents treats it as a sub-agent spawn and shows no status at all.
+  // Bash is the neutral default: its activity line is just the text the agent gave.
   return 'Bash';
 }
 

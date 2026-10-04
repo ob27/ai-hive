@@ -9,10 +9,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const isWin = process.platform === 'win32';
 
 const shimDir = isWin ? join(home, 'bin') : join(homedir(), '.local', 'bin');
-export const shimPath = join(shimDir, isWin ? 'office.cmd' : 'office');
+export const shimPath = join(shimDir, isWin ? 'hive.cmd' : 'hive');
+export const officeShimPath = join(shimDir, isWin ? 'office.cmd' : 'office'); // the old name, kept so existing agents' commands keep working
 
 /** Copies this CLI under ~/.workspace-office/cli (unless it already runs from there) and writes an
- *  `office` launcher, so agents can type `office say "…"` instead of a long node command. */
+ *  `hive` launcher (and the older `office` one), so agents can type `hive say "…"` instead of a long node command. */
 export function installCli() {
   if (root !== cliDir) {
     mkdirSync(cliDir, { recursive: true });
@@ -20,8 +21,10 @@ export function installCli() {
   }
   const entry = join(cliDir, 'bin', 'office.mjs');
   mkdirSync(shimDir, { recursive: true });
-  if (isWin) writeFileSync(shimPath, `@node "${entry}" %*\r\n`);
-  else { writeFileSync(shimPath, `#!/bin/sh\nexec node "${entry}" "$@"\n`); chmodSync(shimPath, 0o755); }
+  for (const path of [shimPath, officeShimPath]) {
+    if (isWin) writeFileSync(path, `@node "${entry}" %*\r\n`);
+    else { writeFileSync(path, `#!/bin/sh\nexec node "${entry}" "$@"\n`); chmodSync(path, 0o755); }
+  }
   const onPath = (process.env.PATH ?? '').split(isWin ? ';' : ':').includes(shimDir);
   return { shim: shimPath, dir: shimDir, onPath };
 }
@@ -29,5 +32,6 @@ export function installCli() {
 /** How an agent should invoke the CLI: the shim by absolute path when installed (works even if its
  *  directory is not on PATH), otherwise node + this entry point. */
 export function reportCommand(entryPath) {
-  return existsSync(shimPath) ? `"${shimPath}"` : `node "${entryPath}"`;
+  if (existsSync(shimPath)) return `"${shimPath}"`;
+  return existsSync(officeShimPath) ? `"${officeShimPath}"` : `node "${entryPath}"`;
 }

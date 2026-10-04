@@ -1,5 +1,5 @@
 // Turns the hook payloads of different agent tools into one small action vocabulary:
-//   { type: 'pre', tool, input }   a tool is starting        (tool = a name Pixel Agents animates)
+//   { type: 'pre', tool, input }   a tool is starting        (tool = a familiar tool name)
 //   { type: 'post' }               that tool finished
 //   { type: 'prompt' }             the user just sent a message → "responding to <user>"
 //   { type: 'stop' }               the turn is over → idle
@@ -9,7 +9,7 @@
 //   Gemini CLI           {hook_event_name:'BeforeTool'|'AfterTool'|'BeforeAgent'|'AfterAgent', tool_name, tool_input}
 //   Cursor               {hook_event_name:'beforeShellExecution'|'beforeReadFile'|'afterFileEdit'|'beforeSubmitPrompt'|'stop', command|file_path}
 
-// Gemini CLI tool names → Pixel Agents tool names.
+// Gemini CLI tool names → the common tool names.
 const GEMINI_TOOLS = {
   run_shell_command: 'Bash', read_file: 'Read', read_many_files: 'Read', write_file: 'Write', replace: 'Edit',
   glob: 'Glob', list_directory: 'Glob', grep_search: 'Grep', search_file_content: 'Grep',

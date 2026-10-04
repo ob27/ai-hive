@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-rebar-theme="clean">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/hive/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/hive/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/hive/apple-touch-icon.png" />
+    <title>AI Hive</title>
+  </head>
+  <body style="margin: 0">
+    <div id="root">
+      <!-- Shown until the app mounts (React replaces it). The script is large; on a slow connection this is what you see. -->
+      <div style="font: 16px system-ui, sans-serif; padding: 32px; color: #555">
+        <p style="margin: 0 0 12px; display: flex; align-items: center; gap: 10px"><img src="/hive/aihive-bee-halo.svg" alt="" width="28" height="30" />Loading the hive…</p>
+        <p id="boot-slow" style="display: none; margin: 0; font-size: 14px">
+          Still loading: the page's script is large and your connection may be slow. You can
+          <a href="/join-page?plain=1">open the lightweight Join page</a> instead, which needs no script download.
+        </p>
+      </div>
+    </div>
+    <noscript><p style="font: 16px system-ui, sans-serif; padding: 32px">This page needs JavaScript. <a href="/join-page?plain=1">Open the lightweight Join page</a> instead.</p></noscript>
+    <script>setTimeout(function () { var e = document.getElementById("boot-slow"); if (e) e.style.display = "block"; }, 5000);</script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

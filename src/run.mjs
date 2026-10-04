@@ -10,7 +10,7 @@ const IDLE_AFTER_MS = 8000;
 // Trade-off: piping stdio loses the child's TTY, so this suits headless/line-oriented agents better
 // than full-screen TUIs (use chirp or hooks for those).
 export function runWrapped(seat, [cmd, ...args]) {
-  const child = spawn(cmd, args, { stdio: ['inherit', 'pipe', 'pipe'], env: { ...process.env, OFFICE_SEAT: seat.name } });
+  const child = spawn(cmd, args, { stdio: ['inherit', 'pipe', 'pipe'], env: { ...process.env, HIVE_SEAT: seat.name, OFFICE_SEAT: seat.name } });
   let last = 0;
   let idleTimer;
 

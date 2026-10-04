@@ -1,2 +1,10 @@
 node_modules/
 .DS_Store
+*.log
+# Each tool's hook settings written by `hive join` hold a path on one machine: never commit them.
+.claude/
+.qwen/
+.gemini/
+.cursor/
+# The built screen: build it yourself (see README, "Build the screen")
+hive-ui/dist/

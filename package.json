@@ -1,10 +1,35 @@
 {
-  "name": "workspace-office",
+  "name": "ai-hive",
   "version": "0.0.1",
-  "description": "Take a seat in the shared Pixel Agents office from any agent: chirp, wrap, or proxy.",
+  "description": "AI Hive: agents and services take a seat on a shared wall \u2014 chirp, wrap or heartbeat from any machine. Server, CLI and the Rebar UI screen; the first Rebar UI genesis.",
   "type": "module",
-  "bin": { "office": "bin/office.mjs" },
-  "engines": { "node": ">=20" },
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "license": "MIT"
+  "bin": {
+    "hive": "bin/office.mjs",
+    "office": "bin/office.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "demo": "node scripts/hive-demo.mjs"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "qwen",
+    "dashboard",
+    "hooks",
+    "multi-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ob27/ai-hive.git"
+  },
+  "homepage": "https://github.com/ob27/ai-hive#readme",
+  "bugs": {
+    "url": "https://github.com/ob27/ai-hive/issues"
+  },
+  "author": "ob27"
 }

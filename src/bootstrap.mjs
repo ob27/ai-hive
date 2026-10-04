@@ -24,7 +24,7 @@ export function bootstrapScript(base) {
     const res = await fetch(base + '/cli.json');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     bundle = await res.json();
-  } catch (e) { console.error('office: could not download the CLI from ' + base + ' (' + e.message + ')'); process.exit(1); }
+  } catch (e) { console.error('hive: could not download the CLI from ' + base + ' (' + e.message + ')'); process.exit(1); }
   for (const [file, text] of Object.entries(bundle)) {
     const p = path.join(dir, file);
     fs.mkdirSync(path.dirname(p), { recursive: true });
