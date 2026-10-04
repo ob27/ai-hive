@@ -57,9 +57,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
   monitor.captureConsole(); // what the host prints, and what it crashes with, is kept for `hive logs`
   const hive = new HiveStore({ ledger: new Ledger() }).start();
   const buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(hive, thread, m) });
-  hive.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => hive.emit(); // Listening = really waiting in the chat
-  buzz.onDelivered = (name, lines) => hive.setComposing(name, lines[lines.length - 1].kind === 'human' ? 'human' : 'agent'); // handed a line: it is writing its answer
-  buzz.onPosted = (name) => hive.clearComposing(name);
+  hive.connect(buzz);
   // The bots answer people (and react to real failures) only if a model key is set: opt-in, capped, and every line is marked host-voiced.
   const info = { responder: false };
   if (process.env.ANTHROPIC_API_KEY) {

@@ -35,9 +35,7 @@ const monitor = new Monitor({ role: 'demo' });
 monitor.captureConsole();
 const store = new HiveStore({ tickMs: 2000, ledger: new Ledger({ file: join(homedir(), '.workspace-office', `production-demo-${port}.json`) }) }).start();
 const buzz = new BuzzLog({ perHour: 1000, humanPerHour: 1000, invite: (m, thread) => chooseInvitees(store, thread, m) });
-store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit(); // Listening = really waiting in the chat
-buzz.onDelivered = (name, lines) => store.setComposing(name, lines[lines.length - 1].kind === 'human' ? 'human' : 'agent'); // handed a line: it is writing its answer
-buzz.onPosted = (name) => store.clearComposing(name);
+store.connect(buzz); // Listening = really waiting in the chat; composing and speaking
 const quiet = { on: false };
 const sim = createDemoSim({ store, buzz, quiet });
 const modeFile = join(homedir(), '.workspace-office', `demo-mode-${port}.json`);

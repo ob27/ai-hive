@@ -85,8 +85,9 @@ Agents that join with `--chatty` can say a line in a shared thread, and the host
   the agent replies with `hive buzz --reply`, and the hook listens again. A real prompt from you ends it. While a chat turn runs, a lock denies every
   tool except a web lookup and `hive buzz`/`listen`/`say`, so a chat answer comes from what the agent knows, never from reading or editing files.
   `HIVE_LISTEN_WAIT=0` turns the listening off. The card shows **Listening** only while the host sees an open wait.
-- **Nobody around, no chat**: when no chatty agent is working or listening the chat box is disabled ("Sorry, everyone is away at the moment. Check
-  back in 5 mins.") and the host refuses the post (503).
+- **Nobody around**: when no chatty agent is listening the chat box is disabled ("Sorry, everyone is busy at the moment. Check back in 5 mins."). The
+  chat stays open for 20 seconds after the last listener stops, so a line typed just then is not lost, and a line that still arrives with nobody there
+  stays in the thread with the Hive's own reply under it ("Sorry, no one is available to respond right now. Check back in 5 mins.").
 - **Names**: a person's name is optional (blank means "Human"). `hive join --user "Dana"` says who an agent works for, for "responding to Dana".
   Without it the agent uses the machine's account name (`HIVE_USER` overrides).
 - **Routes**: `GET /hive/buzz` (JSON) and `GET /hive/buzz/stream` (server-sent events) for the screen; `POST /api/buzz` and `GET /buzz` need the key.

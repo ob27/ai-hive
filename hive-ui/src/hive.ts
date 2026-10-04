@@ -24,11 +24,11 @@ export const forWall = (serviceOrb: ServiceOrb) => (m: HiveMember): AgentWallMem
 });
 
 /** Chat is available iff a chatty agent is sitting in the chat. One that is busy mid-turn will not answer for minutes (the host answers 503 otherwise). */
-export const chatAvailable = (members: HiveMember[]) => members.some((m) => m.kind === "agent" && m.chatty === true && m.status === "listening");
+export const chatAvailable = (members: HiveMember[]) => members.some((m) => m.kind === "agent" && m.chatty === true && (m.chatOpen ?? m.status === "listening")); // chatOpen: listening, or only just stopped (a few seconds' grace)
 import { DemoSim } from "./demo";
 
 /** What the host sends: an AgentWallMember plus when it last reported. See rebarui/ref/AI_HIVE.md. */
-export type HiveMember = Omit<AgentWallMember, "status"> & { status?: HiveStatus; updatedAt?: number; chatty?: boolean; reports?: "hooks" | "chirps"; tools?: string[] };
+export type HiveMember = Omit<AgentWallMember, "status"> & { status?: HiveStatus; updatedAt?: number; chatty?: boolean; reports?: "hooks" | "chirps"; tools?: string[]; chatOpen?: boolean };
 
 const BASE = import.meta.env.BASE_URL; // "/hive/"
 

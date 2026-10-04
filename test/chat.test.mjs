@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HiveStore } from '../src/hive.mjs';
 import { BuzzLog } from '../src/buzz.mjs';
-import { chooseInvitees, botDepth, AWAY_MESSAGE } from '../src/chat.mjs';
+import { chooseInvitees, botDepth, NOBODY_MESSAGE } from '../src/chat.mjs';
 import { allowedInChat, continuation, denial } from '../src/listenloop.mjs';
 import { createIngest } from '../src/ingest.mjs';
 import { handleHumanBuzz } from '../src/hive-http.mjs';
@@ -38,7 +38,7 @@ test('a chatty agent that just finished is Listening, then wanders off; nobody e
 
 test('with the host watching, Listening means a real open wait: a fresh join, or a turn that ended with no hook, is not listening', async () => {
   const c = clock(); const store = new HiveStore({ now: c.now }); const buzz = new BuzzLog({ now: c.now });
-  store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit();
+  store.connect(buzz);
   store.observe(ev('Tim', 'Stop'), { chatty: true }); // what `hive join` reports
   assert.equal(store.snapshot()[0].status, 'idle');
   const wait = buzz.waitFor(0, 'Tim', 5000);
@@ -119,18 +119,43 @@ test('bots do not keep each other talking: a bot answer invites one more bot unt
   assert.deepEqual(a2.invited, [], 'two bot turns deep: the thread goes quiet');
 });
 
-test('the wall refuses a person\'s line when nobody is listening, with the message to show', async () => {
+test('when nobody is listening a person\'s line still lands in the thread and the Hive itself says nobody is available', async () => {
   const c = clock(); const { store, buzz } = room(c, { A: 'idle', B: 'idle' });
   const srv = http.createServer((req, res) => handleHumanBuzz(req, res, buzz, store) || res.writeHead(404).end());
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-  const post = () => fetch(`http://127.0.0.1:${srv.address().port}/hive/buzz`, { method: 'POST', body: JSON.stringify({ name: 'tom', text: 'hi' }) });
-  const refused = await post();
-  assert.deepEqual([refused.status, (await refused.json()).error], [503, AWAY_MESSAGE]);
+  const post = (text = 'hi') => fetch(`http://127.0.0.1:${srv.address().port}/hive/buzz`, { method: 'POST', body: JSON.stringify({ name: 'tom', text }) });
+  const lastTwo = () => buzz.list(2).map((m) => [m.from, m.kind, m.text, m.quote?.text]);
+  assert.equal((await post()).status, 204);
+  assert.deepEqual(lastTwo(), [['tom', 'human', 'hi', undefined], ['hive', 'system', NOBODY_MESSAGE, 'hi']], 'the reply is quoted under their line');
+  await post('anyone?');
+  assert.equal(buzz.list(5).filter((m) => m.text === NOBODY_MESSAGE).length, 1, 'not repeated for a line typed straight after');
   store.observe(ev('A', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }), { chatty: true });
-  assert.equal((await post()).status, 503, 'busy in the middle of a turn: it will not answer for minutes');
+  c.advance(60_000);
+  assert.equal(store.chatReady().ok, false, 'busy in the middle of a turn: it will not answer for minutes');
   store.observe(ev('A', 'Stop'), { chatty: true });
-  assert.equal((await post()).status, 204, 'finished its turn and listening: now it can');
+  const n = buzz.list(50).length;
+  assert.equal((await post('now?')).status, 204);
+  assert.equal(buzz.list(50).length, n + 1, 'finished its turn and listening: no apology, just the line');
   srv.close();
+});
+
+test('chat stays open for a few seconds after the last listener stops, then closes', async () => {
+  const c = clock(); const store = new HiveStore({ now: c.now }); const buzz = new BuzzLog({ now: c.now });
+  store.connect(buzz);
+  store.observe(ev('Q', 'Stop'), { chatty: true });
+  const wait = buzz.waitFor(0, 'Q', 40);            // Q sits in the chat for a moment, then its wait ends with nothing said
+  assert.equal(store.chatReady().ok, true);
+  assert.equal(store.snapshot()[0].status, 'listening');
+  await wait;
+  assert.equal(store.snapshot()[0].status, 'idle');
+  assert.equal(store.chatReady().ok, true, 'still open: it only just stopped');
+  assert.equal(store.snapshot()[0].chatOpen, true);
+  c.advance(15_000); assert.equal(store.chatReady().ok, true);
+  c.advance(10_000); assert.equal(store.chatReady().ok, false, 'the grace period is over');
+  store.observe(ev('Q', 'Stop'), { chatty: true });
+  buzz.waitFor(0, 'Q', 40); assert.equal(store.chatReady().ok, true);
+  store.observe(ev('Q', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: true });
+  assert.equal(store.snapshot()[0].chatOpen, false, 'working again: no grace');
 });
 
 test('each tool is told to carry on, and to deny a tool, in its own hook format', () => {
@@ -159,7 +184,7 @@ const CLI = join(import.meta.dirname, '..', 'bin', 'office.mjs');
 let store, buzz, server, addr, home;
 before(async () => {
   store = new HiveStore(); buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(store, thread, m) });
-  store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit();
+  store.connect(buzz);
   server = http.createServer(createIngest({ hive: store, buzz, key: KEY, defaultBase: () => addr }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   addr = `127.0.0.1:${server.address().port}`;

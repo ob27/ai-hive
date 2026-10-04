@@ -110,7 +110,7 @@ const CLI = join(import.meta.dirname, '..', 'bin', 'office.mjs');
 let store, buzz, ingest, wall, ingestAddr, wallAddr, home;
 before(async () => {
   store = new HiveStore({ ledger: new Ledger({ file: tmp(), saveMs: 0 }) }); buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(store, thread, m) });
-  store.probe = (name) => buzz.isWaiting(name); buzz.onListenChange = () => store.emit();
+  store.connect(buzz);
   ingest = http.createServer(createIngest({ hive: store, buzz, key: KEY, defaultBase: () => ingestAddr }));
   wall = http.createServer((req, res) => handleAdmin(req, res, { hive: store, buzz, key: KEY }) || handleHiveRead(req, res, store, '/nonexistent', buzz, {}) || res.writeHead(404).end());
   await Promise.all([ingest, wall].map((s) => new Promise((r) => s.listen(0, '127.0.0.1', r))));

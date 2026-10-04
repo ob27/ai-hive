@@ -8,7 +8,7 @@
 //   GET  /hive/join-info  { ingest, key }: what the Join page needs. The key is null unless the host pre-fills it (never part of /hive/info)
 //   POST /api/buzz        keyed. A chatty agent says a line.   GET /buzz (keyed): the thread, for agents to read
 //   GET  /hive/...        the built Hive screen (hive-ui/dist), SPA-style
-import { AWAY_MESSAGE } from './chat.mjs';
+import { NOBODY_MESSAGE } from './chat.mjs';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import { extname, join, normalize, sep } from 'node:path';
@@ -136,11 +136,15 @@ export function handleHumanBuzz(req, res, buzz, hive = null) {
   if (req.method !== 'POST' || req.url.split('?')[0] !== '/hive/buzz') return false;
   readJson(req, res).then((body) => {
     if (!body) return;
-    if (hive && !hive.chatReady().ok) return json(res, 503, { error: AWAY_MESSAGE }); // nobody is sitting in the chat: the agents are all busy or away
     const raw = typeof body.name === 'string' ? body.name.trim() : '';
     const name = /^[\p{L}\p{N} _.'-]{1,24}$/u.test(raw) ? raw : 'Human'; // on a shared screen nobody has to give a name: the agents just see "Human"
     const r = buzz.post({ from: name, kind: 'human', text: body.text, limitKey: req.socket.remoteAddress, replyTo: body.replyTo });
     if (!r.ok) return json(res, r.status, { error: r.error });
+    // Nobody is sitting in the chat (a few seconds' grace aside): the line stays in the thread, and the Hive itself says so, rather than leaving it hanging.
+    if (hive && !hive.chatReady().ok) {
+      const before = buzz.list(2).find((m) => m.id !== r.message.id && m.text === NOBODY_MESSAGE); // do not repeat it for a second line typed straight after
+      if (!before || r.message.at - before.at > 30_000) buzz.post({ from: 'hive', kind: 'system', text: NOBODY_MESSAGE, replyTo: r.message.id });
+    }
     res.writeHead(204).end();
   });
   return true;

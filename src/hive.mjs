@@ -24,6 +24,7 @@ export const DEFAULTS = {
   focusMs: 60_000,             // before it has history, a working agent quiet this long is probably deep in something big ("Focusing"), not stuck
   focusMinMs: 30_000,          // however fast an agent usually reports, it is never called Focusing sooner than this
   listenMs: 60_000,            // a chatty agent that just finished its turn is still in the chat (the end-of-turn hook waits LISTEN_WAIT_SEC=50) this long
+  chatGraceMs: 20_000,         // chat stays open this long after the last listener stopped listening, so a send is not lost to bad timing
   tickMs: 5_000,               // how often the stream re-checks for status changes that no event announced
 };
 
@@ -110,7 +111,7 @@ export class HiveStore {
     a.lastAt = now;
     switch (payload.hook_event_name) {
       case 'SessionStart': a.stopped = true; a.stoppedAt = now; a.listenFrom = undefined; a.pre = null; a.activity = undefined; break;
-      case 'PreToolUse': a.stopped = false; a.listenFrom = undefined; a.activity = describe(payload.tool_name, payload.tool_input); a.pre = { at: now }; break;
+      case 'PreToolUse': a.stopped = false; a.listenFrom = undefined; a.lastListeningAt = undefined; /* working again: no grace */ a.activity = describe(payload.tool_name, payload.tool_input); a.pre = { at: now }; break;
       case 'PostToolUse': case 'PostToolUseFailure': a.stopped = false; a.pre = null; break;
       case 'Stop': a.stopped = true; a.stoppedAt = now; a.listenFrom = now; a.pre = null; a.activity = undefined; a.composing = undefined; if (!meta.joining) this.count(a, now); a.turn = null; break; // the turn is over: don't keep showing its last task ("responding to tom")
       default: break; // Notification, SubagentStop…: proof of life only
@@ -253,10 +254,24 @@ export class HiveStore {
     return [...this.agents.values()].find((a) => a.name === name);
   }
 
-  /** Can anyone answer a message right now? Only a chatty agent sitting in the chat will: one that is busy in the middle of a turn will not reply for minutes. */
+  /** Wire a BuzzLog to this wall: who is really waiting in the chat, who has been handed a line, who has spoken. The one place both are connected. */
+  connect(buzz) {
+    this.probe = (name) => buzz.isWaiting(name); // Listening = really waiting in the chat
+    buzz.onListenChange = (name) => { const a = this.findAgent(name); if (a) a.lastListeningAt = this.now(); this.emit(); };
+    buzz.onDelivered = (name, lines) => this.setComposing(name, lines[lines.length - 1].kind === 'human' ? 'human' : 'agent'); // handed a line: it is writing its answer
+    buzz.onPosted = (name) => this.clearComposing(name);
+    return this;
+  }
+
+  /**
+   * Can anyone answer a message right now? Only a chatty agent sitting in the chat will: one that is busy in the middle of a turn will not reply
+   * for minutes. A listener that has only just stopped (a few seconds) still counts, so a person who typed while the chat was open is not turned away.
+   */
   chatReady() {
-    const listening = this.snapshot().filter((m) => m.kind === 'agent' && m.chatty && m.status === 'listening').map((m) => m.name);
-    return { ok: listening.length > 0, listening };
+    const members = this.snapshot().filter((m) => m.kind === 'agent' && m.chatty);
+    const listening = members.filter((m) => m.status === 'listening').map((m) => m.name);
+    const open = members.filter((m) => m.chatOpen).map((m) => m.name);
+    return { ok: open.length > 0, listening, open };
   }
 
   /** The wall: every member with a derived status. Prunes ghosts and services that have been gone long enough. Worst first. */
@@ -293,7 +308,9 @@ export class HiveStore {
         [status, label] = ['active', 'Active Now'];
         why = `Working: last report ${ago(age)} ago${a.pre ? `, "${a.activity ?? 'a task'}" in progress` : ''}.`;
       }
-      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
+      if (status === 'listening') a.lastListeningAt = now;
+      const chatOpen = a.chatty === true && status !== 'ghost' && (status === 'listening' || (a.lastListeningAt !== undefined && now - a.lastListeningAt < c.chatGraceMs));
+      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, chatOpen, modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
     }
     for (const s of [...this.services.values()]) {
       const age = now - s.lastAt;

@@ -18,7 +18,7 @@ export class BuzzLog {
     this.now = now;
     this.invite = invite;
     this.waiting = new Map(); // name -> open `hive listen` waits: the only proof an agent is actually in the chat
-    this.onListenChange = null;
+    this.onListenChange = null; // (name): that agent started or stopped waiting in the chat
     this.onDelivered = null;  // (name, lines): `hive listen` just handed these lines to an agent, so it is now writing its answer
     this.onPosted = null;     // (name): an agent has spoken
     this.pokes = new Map();   // name -> resolvers of that agent's open waits, so a tap on the shoulder can wake them
@@ -99,7 +99,7 @@ export class BuzzLog {
     if (now.length) this.onDelivered?.(name, now);
     if (now.length || waitMs <= 0) return Promise.resolve(now);
     this.waiting.set(name, (this.waiting.get(name) ?? 0) + 1);
-    this.onListenChange?.();
+    this.onListenChange?.(name);
     return new Promise((resolve) => {
       let off = () => {}, tick = null;
       const wake = () => done([]);
@@ -112,7 +112,7 @@ export class BuzzLog {
         const n = (this.waiting.get(name) ?? 1) - 1;
         if (n > 0) this.waiting.set(name, n); else this.waiting.delete(name);
         resolve(lines);
-        this.onListenChange?.();
+        this.onListenChange?.(name);
       };
       let endsAt = Date.now() + waitMs;
       const cap = endsAt + this.cfg.extendMs;

@@ -14,6 +14,8 @@ export const CHAT_DEFAULTS = {
   staleMs: 180_000,  // a line this old is no longer worth waking an agent for
 };
 
+/** What the Hive says itself when a person posts and nobody is there to answer. */
+export const NOBODY_MESSAGE = 'Sorry, no one is available to respond right now. Check back in 5 mins.';
 export const AWAY_MESSAGE = 'Sorry, everyone is busy at the moment. Check back in 5 mins.';
 
 const REACT = /stopped responding|reports trouble|reports a failure|is healthy again/;
