@@ -60,6 +60,7 @@ export function parseHeartbeat(body) {
     for (const k of METRICS) {
       const v = body.metrics[k];
       if (v === undefined || v === null) continue;
+      if (Array.isArray(v) || (v && typeof v === 'object')) return { error: `metrics.${k} must be one number: send the average across all of them (all CPUs, all GPUs), not one per core` };
       if (typeof v !== 'number' || !Number.isFinite(v)) return { error: `metrics.${k} must be a number` };
       metrics[k] = k === 'temp' ? Math.max(-50, Math.min(250, v)) : Math.max(0, Math.min(1000, v));
     }

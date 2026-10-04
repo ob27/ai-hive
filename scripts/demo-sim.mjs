@@ -85,6 +85,7 @@ export function createDemoSim({ store, buzz, quiet = { on: false }, canned = tru
         m.mem = now < leakUntil ? Math.min(98, m.mem + rand(1.5, 3.5)) : Math.max(base.mem, m.mem - rand(1, 4));
         if (id === 'dsl' && Math.random() < 0.03) heatUntil = now + 40_000;
         if (now < heatUntil) m.temp = Math.min(104, m.temp + rand(6, 11));
+        if (id === 'dsl') m.gpu = walk(m.gpu ?? 30, 5, 90, 10); // the one with a GPU
         const metrics = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, Math.round(v * 10) / 10]));
         // Only the metrics say it is struggling: the Hive's rules turn a steady climb or a heat spike into the status.
         store.heartbeat({ id, name, project: proj, message: now < leakUntil ? 'memory climbing' : `${name}: heartbeat #${beat}`, ttlSec: 15, metrics });

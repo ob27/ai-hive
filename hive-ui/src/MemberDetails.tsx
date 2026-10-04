@@ -15,6 +15,7 @@ const svg = (children: ReactNode) => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
 const ICONS: Record<MetricKey, ReactNode> = {
+  gpu: svg(<><rect x="2.5" y="7" width="19" height="10" rx="1.5" /><circle cx="9" cy="12" r="2.6" /><circle cx="9" cy="12" r=".6" /><path d="M15 10v4M17.5 10v4M5 17v2.5M8 17v2.5" /></>),
   cpu: svg(<><rect x="6" y="6" width="12" height="12" rx="1.5" /><rect x="9.5" y="9.5" width="5" height="5" /><path d="M9 3v3M12 3v3M15 3v3M9 18v3M12 18v3M15 18v3M3 9h3M3 12h3M3 15h3M18 9h3M18 12h3M18 15h3" /></>),
   mem: svg(<><rect x="2" y="7" width="20" height="9" rx="1" /><path d="M5 10v3M8.5 10v3M12 10v3M15.5 10v3M19 10v3M5 16v2M9 16v2M15 16v2M19 16v2" /></>),
   load: svg(<><path d="M4.5 18a8.5 8.5 0 1 1 15 0" /><path d="M12 15l4-5" /><circle cx="12" cy="15" r="1" /><path d="M6 12.5l.8.5M12 6.5V8M18 12.5l-.8.5" /></>),
@@ -22,19 +23,20 @@ const ICONS: Record<MetricKey, ReactNode> = {
   temp: svg(<><path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z" /><path d="M12 9v7" /></>),
 };
 const LABELS: Record<MetricKey, (n: number) => [string, string]> = {
+  gpu: (n) => [`${n}%`, `GPU ${n}% (average of all GPUs)`],
   cpu: (n) => [`${n}%`, `CPU ${n}%`],
   mem: (n) => [`${n}%`, `Memory ${n}%`],
   load: (n) => [`${n}%`, `Load ${n}% of the cores`],
   disk: (n) => [`${n}%`, `Disk ${n}% full`],
   temp: (n) => [`${n}°`, `Temperature ${n} °C`],
 };
-const WORDS: Record<MetricKey, RegExp> = { cpu: /cpu|processor/i, mem: /memory|\bmem\b|leak|swap/i, load: /load/i, disk: /disk|storage|space/i, temp: /temp|hot|heat|thermal/i };
+const WORDS: Record<MetricKey, RegExp> = { cpu: /cpu|processor/i, gpu: /gpu|graphics/i, mem: /memory|\bmem\b|leak|swap/i, load: /load/i, disk: /disk|storage|space/i, temp: /temp|hot|heat|thermal/i };
 const COLOURS = { warn: "#E8A33D", bad: "var(--rebar-color-danger, #d32f2f)" };
 
 function Gauges({ member }: { member: HiveMember }) {
   const m = member.metrics;
   if (!m) return null;
-  const keys = (["cpu", "mem", "load", "temp", "disk"] as MetricKey[]).filter((k) => typeof m[k] === "number" && Number.isFinite(m[k]));
+  const keys = (["cpu", "gpu", "mem", "load", "temp", "disk"] as MetricKey[]).filter((k) => typeof m[k] === "number" && Number.isFinite(m[k]));
   if (!keys.length) return null;
   return (
     <div role="group" aria-label="Machine readings" style={{ display: "flex", gap: 14, alignItems: "center" }}>

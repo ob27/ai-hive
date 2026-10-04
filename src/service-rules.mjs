@@ -8,20 +8,22 @@
 //
 // A rule is   <metric> <op> <number> [for <duration>]  -> <degraded|failure> ["message"]      op is > >= < <=
 //        or   <metric> rises <number> in <duration>     -> <degraded|failure> ["message"]     (a steady climb, not a spike)
-// Metrics: cpu, mem, load, disk (percent), temp (degrees C). Durations: 30s, 2m, 1h. `#` starts a comment. In a message {metric}, {value}, {n} and {delta}
+// Metrics: cpu, gpu, mem, load, disk (percent), temp (degrees C). With several CPUs or GPUs each is one aggregated number (the average of all of them). Durations: 30s, 2m, 1h. `#` starts a comment. In a message {metric}, {value}, {n} and {delta}
 // are filled in. The worst rule that fires sets the status; every rule that fires is listed as a reason. Put your own rules in
 // ~/.workspace-office/service-rules.txt (they replace the defaults), or pass them to the store.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const METRICS = ['cpu', 'mem', 'load', 'disk', 'temp'];
-export const UNITS = { cpu: '%', mem: '%', load: '%', disk: '%', temp: '°C' };
+// One number each, whatever the machine has: with several CPUs or GPUs a service sends the AVERAGE across all of them (and temp is the hottest sensor).
+export const METRICS = ['cpu', 'gpu', 'mem', 'load', 'disk', 'temp'];
+export const UNITS = { cpu: '%', gpu: '%', mem: '%', load: '%', disk: '%', temp: '°C' };
 
 export const DEFAULT_RULES = `
 # Pinned CPU, then pinned for good
 cpu > 90 for 2m          -> degraded "CPU above 90% for 2 minutes"
 cpu > 98 for 5m          -> failure  "CPU pinned above 98% for 5 minutes"
+gpu > 95 for 5m          -> degraded "GPU above 95% for 5 minutes"
 # Memory: high, nearly gone, or climbing steadily (a leak)
 mem > 90 for 1m          -> degraded "Memory above 90% for a minute"
 mem > 97                 -> failure  "Memory nearly exhausted ({value}%)"

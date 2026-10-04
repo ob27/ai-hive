@@ -11,7 +11,7 @@ const run = (text, samples) => evaluateRules(parseRules(text).rules, samples, NO
 test('the default rules parse, and a line that does not is reported with its number and why', () => {
   const ok = parseRules(DEFAULT_RULES);
   assert.deepEqual(ok.errors, []);
-  assert.equal(ok.rules.length, 10);
+  assert.equal(ok.rules.length, 11);
   const bad = parseRules('cpu >> 3\nfoo > 3 -> degraded\nmem > 5 for xx -> failure\n# a comment\n\ncpu > 1 -> degraded');
   assert.deepEqual(bad.errors.map((e) => e.line), [1, 2, 3]);
   assert.match(bad.errors[1].error, /unknown metric "foo"/);
@@ -83,5 +83,7 @@ test('a heartbeat\'s metrics are checked: numbers only, clamped, unknown keys ig
   assert.deepEqual(parseHeartbeat({ id: 'x', metrics: { cpu: 41.5, temp: 999, junk: 1, mem: -5 } }).value.metrics, { cpu: 41.5, mem: 0, temp: 250 });
   assert.match(parseHeartbeat({ id: 'x', metrics: { cpu: 'high' } }).error, /metrics\.cpu must be a number/);
   assert.match(parseHeartbeat({ id: 'x', metrics: [1] }).error, /metrics must be an object/);
+  assert.match(parseHeartbeat({ id: 'x', metrics: { cpu: [10, 20, 30, 40] } }).error, /metrics\.cpu must be one number: send the average across all of them/, 'several CPUs or GPUs: one aggregated number, not one per core');
+  assert.equal(parseHeartbeat({ id: 'x', metrics: { gpu: 55 } }).value.metrics.gpu, 55);
   assert.equal(parseHeartbeat({ id: 'x', metrics: { junk: 1 } }).value.metrics, undefined);
 });

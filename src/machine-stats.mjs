@@ -12,7 +12,7 @@ const run = (cmd, args) => { try { return execFileSync(cmd, args, { encoding: 'u
 let prevCpu = null;
 const cpuTimes = () => os.cpus().reduce((a, c) => { const t = c.times; a.idle += t.idle; a.total += t.user + t.nice + t.sys + t.idle + t.irq; return a; }, { idle: 0, total: 0 });
 
-/** CPU busy percent since the last call (the first call measures over `firstMs`). */
+/** CPU busy percent since the last call (the first call measures over `firstMs`). It is the average over every core of every CPU socket: one number. */
 export async function cpuPercent(firstMs = 250) {
   if (!prevCpu) { prevCpu = cpuTimes(); await new Promise((r) => setTimeout(r, firstMs)); }
   const now = cpuTimes();
@@ -93,8 +93,31 @@ export function tempCelsius({ command } = {}) {
   return undefined;
 }
 
+/** What macmon (a Mac's Apple Silicon sensors, no sudo) prints for one sample, or null. Asked once per reading: both the GPU and the temperature come from it. */
+const macmonJson = () => { try { const t = run('macmon', ['pipe', '-s', '1']).trim(); return t ? JSON.parse(t.split('\n').filter(Boolean).at(-1)) : null; } catch { return null; } };
+
+/** GPU busy percent, AVERAGED over all the GPUs (a machine with four is one number). NVIDIA through nvidia-smi, AMD/Intel on Linux through the kernel, Apple Silicon through macmon. */
+export function gpuPercent({ command, macmon } = {}) {
+  const custom = command ?? process.env.HIVE_GPU_COMMAND;
+  const mean = (xs) => { const v = xs.filter((n) => Number.isFinite(n) && n >= 0 && n <= 100); return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : undefined; };
+  if (custom) return mean(numbers(run('sh', ['-c', custom])).slice(0, 1));
+  const nv = mean(run('nvidia-smi', ['--query-gpu=utilization.gpu', '--format=csv,noheader,nounits']).split('\n').filter(Boolean).map(Number));
+  if (nv !== undefined) return nv;
+  if (process.platform === 'linux') {
+    try {
+      const busy = readdirSync('/sys/class/drm').filter((n) => /^card\d+$/.test(n)).map((c) => Number(readFileSafe(`/sys/class/drm/${c}/device/gpu_busy_percent`)));
+      const m = mean(busy.filter((n) => Number.isFinite(n)));
+      if (m !== undefined) return m;
+    } catch { /* no DRM GPUs */ }
+  }
+  const u = (macmon ?? (process.platform === 'darwin' ? macmonJson() : null))?.gpu_usage; // [MHz, fraction busy]
+  return Array.isArray(u) && typeof u[1] === 'number' ? mean([u[1] * 100]) : undefined;
+}
+
 /** One reading of everything this machine can tell us. Only the values that exist are present. */
-export async function sampleMachine({ tempCommand } = {}) {
-  const m = { cpu: await cpuPercent(), mem: memPercent(), load: loadPercent(), disk: diskPercent(), temp: tempCelsius({ command: tempCommand }) };
+export async function sampleMachine({ tempCommand, gpuCommand } = {}) {
+  const macmon = process.platform === 'darwin' && !tempCommand && !process.env.HIVE_TEMP_COMMAND ? macmonJson() : undefined; // one call for both the temperature and the GPU
+  const temp = macmon ? parseTemperature(JSON.stringify(macmon)) : tempCelsius({ command: tempCommand });
+  const m = { cpu: await cpuPercent(), gpu: gpuPercent({ command: gpuCommand, macmon }), mem: memPercent(), load: loadPercent(), disk: diskPercent(), temp };
   return Object.fromEntries(Object.entries(m).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)));
 }

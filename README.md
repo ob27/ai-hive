@@ -65,6 +65,9 @@ The screen: `http://<host>:3100/` (also `/hive/`). One tile per agent or service
   temperature where there is a sensor to read) with each heartbeat. Temperature: Linux is read from the kernel's thermal and hwmon sensors (and an NVIDIA GPU
   through `nvidia-smi`); on a Mac install [macmon](https://github.com/vladkens/macmon) (`brew install macmon`, Apple Silicon, no sudo; `osx-cpu-temp` and
   `istats` work too). Any other probe: `--temp-command "<command that prints °C>"` (or `HIVE_TEMP_COMMAND`); `--metric temp=61` sets a reading by hand.
+  A machine with several CPUs or GPUs still reports **one number each**: the average across all of them (cpu already is the average over every core of
+  every socket; gpu is the average over all GPUs, from `nvidia-smi`, the kernel's DRM counters or macmon, or `--gpu-command "<cmd printing a percent>"`), and
+  temp is the hottest sensor. The host refuses a per-core list with a message saying so.
   With no sensor the temperature is left out, never guessed. The details box shows them
   as gauges. The host runs a small rules layer over what it is sent (`src/service-rules.mjs`) and lets the status follow the machine, with the reason, so
   a service that says "all fine" while its memory climbs steadily for ten minutes (or its CPU sits above 90% for two) shows as Degraded, and 100 °C as
