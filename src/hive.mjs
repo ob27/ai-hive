@@ -50,8 +50,11 @@ export function describe(tool, input) {
 
 /** A chatty agent that has just finished its turn is still in the chat (`hive listen`) for a while, so it will answer if spoken to. */
 function isListening(a, now, cfg, probe) {
-  if (!a.stopped || a.chatty !== true) return false;
-  if (probe && !a.sim) return probe(a.name); // the host sees an open `hive listen`: the one real proof (a fresh join also says "turn finished")
+  if (a.chatty !== true) return false;
+  // The host sees an open `hive listen`: the one real proof. It holds for an agent between turns (its end-of-turn hook is waiting) and for one that was
+  // asked to listen and is running `hive listen` as a tool in the middle of a turn (a fresh join also says "turn finished", which is not proof).
+  if (probe && !a.sim) return probe(a.name);
+  if (!a.stopped) return false;
   return a.listenFrom !== undefined && now - a.listenFrom < cfg.listenMs;
 }
 

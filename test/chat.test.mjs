@@ -153,7 +153,8 @@ test('chat stays open for a few seconds after the last listener stops, then clos
   c.advance(15_000); assert.equal(store.chatReady().ok, true);
   c.advance(10_000); assert.equal(store.chatReady().ok, false, 'the grace period is over');
   store.observe(ev('Q', 'Stop'), { chatty: true });
-  buzz.waitFor(0, 'Q', 40); assert.equal(store.chatReady().ok, true);
+  const again = buzz.waitFor(0, 'Q', 40); assert.equal(store.chatReady().ok, true);
+  await again; // its wait ends, then it starts working
   store.observe(ev('Q', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: true });
   assert.equal(store.snapshot()[0].chatOpen, false, 'working again: no grace');
 });
@@ -247,4 +248,15 @@ test('the same Stop hook lets the turn end when nobody speaks, and a seat that i
   const r = await run(['hook', '--seat', 'Pat'], { hook_event_name: 'Stop', session_id: 'y', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
   assert.equal(r.out, ''); assert.ok(Date.now() - t0 < 4000, 'it did not wait');
   await run(['leave', '--seat', 'Pat']); await run(['leave', '--seat', 'Nina']);
+});
+
+test('an agent asked to listen shows as Listening while it waits in `hive listen` as a tool in the middle of a turn, and as working again after', async () => {
+  const c = clock(); const store = new HiveStore({ now: c.now }); const buzz = new BuzzLog({ now: c.now });
+  store.connect(buzz);
+  store.observe(ev('Lee', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'hive listen' } }), { chatty: true }); // the turn is still going: a tool call is open
+  assert.equal(store.snapshot()[0].status, 'active');
+  const wait = buzz.waitFor(0, 'Lee', 30);
+  assert.deepEqual([store.snapshot()[0].status, store.snapshot()[0].statusLabel, store.chatReady().ok], ['listening', 'Listening', true]);
+  await wait;
+  assert.equal(store.snapshot()[0].status, 'active', 'the wait is over and the turn is still going');
 });
