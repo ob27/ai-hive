@@ -12,6 +12,7 @@
 import { basename } from 'node:path';
 import { AWAY, LISTENING, pick } from './phrases.mjs';
 import { toolClass, turnWeight } from './production-score.mjs';
+import { DEFAULT_RULES, evaluateRules, parseRules } from './service-rules.mjs';
 
 const MIN = 60_000;
 
@@ -33,6 +34,8 @@ const SEVERITY = { failure: 0, stalled: 1, active: 2, listening: 3, idle: 4, gho
 /** "12s" / "7 min" / "2 h": how long, for the sentences that explain a status. */
 const ago = (ms) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : ms < 3_600_000 ? `${Math.floor(ms / 60_000)} min` : `${Math.floor(ms / 3_600_000)} h`);
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** The longest a service name may be on a card: longer ones are cut with an ellipsis (the id, which is what identifies the service, is untouched). */
+export const SERVICE_NAME_MAX = 28;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const mins = (ms) => Math.floor(ms / MIN);
 
@@ -70,7 +73,8 @@ export function modelFamily(name, hooks) {
 }
 
 export class HiveStore {
-  constructor({ now = Date.now, ledger = null, ...config } = {}) {
+  constructor({ now = Date.now, ledger = null, rules = parseRules(DEFAULT_RULES).rules, ...config } = {}) {
+    this.rules = rules;        // what the Hive watches for in a service's machine stats (service-rules.mjs)
     this.ledger = ledger;      // lifetime turns per agent name (production.mjs); without one turns are counted in memory only
     this.booted = new Map();   // session id -> { name, notice }: removed by the host; its events are ignored until it rejoins as a new seat
     this.inbox = new Map();    // session id -> a message to put in front of that agent on its next event (the tap on the shoulder)
@@ -236,17 +240,26 @@ export class HiveStore {
   }
 
   /** A service heartbeat. `status` is ok | degraded | failure | gone (gone removes the service at once). */
-  heartbeat({ id, name, project, status = 'ok', message, ttlSec }) {
+  heartbeat({ id, name, project, status = 'ok', message, ttlSec, metrics }) {
     if (status === 'gone') {
       if (this.services.delete(id)) this.emit();
       return;
     }
     this.services.set(id, {
-      id, name: name || id, project: project ? clip(String(project), 80) : undefined, beat: status,
+      id, name: clip(String(name || id).replace(/\s+/g, ' ').trim(), SERVICE_NAME_MAX), project: project ? clip(String(project), 80) : undefined, beat: status,
       message: message ? clip(String(message), 200) : undefined,
       ttlMs: (ttlSec ?? this.cfg.serviceTtlSec) * 1000, lastAt: this.now(),
+      ...this.keepSamples(id, metrics),
     });
     this.emit();
+  }
+
+  /** The machine readings a service has streamed, newest last, for the last half hour: the rules look for trends in these. */
+  keepSamples(id, metrics) {
+    const now = this.now();
+    const prev = this.services.get(id)?.samples ?? [];
+    const samples = metrics ? [...prev, { at: now, ...metrics }].filter((s) => now - s.at <= 30 * MIN).slice(-300) : prev;
+    return { samples, metrics: metrics ? { ...metrics, at: now } : this.services.get(id)?.metrics };
   }
 
   /** The seated agent with this name, if any (used to check a buzz comes from a chatty seat). */
@@ -316,13 +329,25 @@ export class HiveStore {
       const age = now - s.lastAt;
       if (age >= c.serviceDropMs) { this.services.delete(s.id); continue; }
       let status, label, activity, why;
+      // What the rules make of the machine readings the service streams (none: nothing to add).
+      const derived = s.samples?.length ? evaluateRules(this.rules, s.samples, now) : { status: 'ok', reasons: [], states: {} };
+      const signs = derived.reasons.map((r) => r.text);
+      const worst = derived.reasons.slice().sort((x, y) => (y.status === 'failure') - (x.status === 'failure'))[0];
+      const beat = derived.status === 'failure' || s.beat === 'failure' ? 'failure' : derived.status === 'degraded' || s.beat === 'degraded' ? 'degraded' : 'ok';
       if (age > s.ttlMs) {
         status = 'failure'; label = 'Not responding'; why = `No heartbeat for ${ago(age)}; it should report at least every ${ago(s.ttlMs)}, so it has likely failed.`;
         activity = `${s.message ?? s.name}: no heartbeat for ${age < 2 * MIN ? 'over a minute' : plural(mins(age), 'minute')}, likely failed`;
-      } else if (s.beat === 'failure') { status = 'failure'; label = 'Failure'; activity = s.message; why = `It reported a failure ${ago(age)} ago${s.message ? `: "${s.message}"` : ''}.`; }
-      else if (s.beat === 'degraded') { status = 'failure'; label = 'Degraded'; activity = s.message; why = `It reported it is struggling ${ago(age)} ago${s.message ? `: "${s.message}"` : ''}. That shows as a failure.`; }
-      else { status = 'active'; label = 'Healthy'; activity = s.message; why = `Last heartbeat ${ago(age)} ago.`; }
-      out.push({ id: s.id, kind: 'service', name: s.name, project: s.project, status, statusLabel: label, statusReason: why, activity, updatedAt: s.lastAt });
+      } else if (beat === 'failure') {
+        status = 'failure'; label = 'Failure';
+        activity = s.beat === 'failure' ? s.message ?? worst?.text : worst?.text;
+        why = s.beat === 'failure' ? `It reported a failure ${ago(age)} ago${s.message ? `: "${s.message}"` : ''}.` : '';
+      } else if (beat === 'degraded') {
+        status = 'failure'; label = 'Degraded';
+        activity = derived.status === 'degraded' ? worst?.text : s.message;
+        why = s.beat === 'degraded' ? `It reported it is struggling ${ago(age)} ago${s.message ? `: "${s.message}"` : ''}. That shows as a failure.` : '';
+      } else { status = 'active'; label = 'Healthy'; activity = s.message; why = `Last heartbeat ${ago(age)} ago.`; }
+      if (signs.length) why = `${why}${why ? ' ' : ''}The Hive's rules saw: ${signs.join('; ')}.`;
+      out.push({ id: s.id, kind: 'service', name: s.name, project: s.project, status, statusLabel: label, statusReason: why, activity, ...(s.metrics ? { metrics: s.metrics, metricStates: derived.states } : {}), ...(signs.length ? { signs } : {}), updatedAt: s.lastAt });
     }
     return out.sort((x, y) => SEVERITY[x.status] - SEVERITY[y.status] || x.name.localeCompare(y.name));
   }

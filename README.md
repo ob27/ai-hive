@@ -60,6 +60,19 @@ The screen: `http://<host>:3100/` (also `/hive/`). One tile per agent or service
   `--ttl` (default 60 s) shows as *Not responding, likely failed*; `--every` keeps reporting and sends `gone` on Ctrl+C. Services do not ghost.
   `--logs` makes the service's message the host's own log tail (skipping the wall's polling and heartbeats; a server error shows as Degraded),
   which is how to put the Hive's own web app on its wall: `hive heartbeat --id hive-web --name "Hive Web App" --logs --every 30 --url <host>:3101 --key <key>`.
+  Service names longer than 28 characters are cut with an ellipsis on the card (the `--id` is untouched).
+- **Machine stats and the rules**: `--metrics` streams the readings of the machine the service runs on (cpu, mem, load as a percent of the cores, disk, and
+  temperature where the machine gives one: Linux, not a Mac) with each heartbeat; `--metric temp=61` adds a reading of your own. The details box shows them
+  as gauges. The host runs a small rules layer over what it is sent (`src/service-rules.mjs`) and lets the status follow the machine, with the reason, so
+  a service that says "all fine" while its memory climbs steadily for ten minutes (or its CPU sits above 90% for two) shows as Degraded, and 100 °C as
+  a Failure. The rules are a few readable lines and the defaults are in the file; your own go in `~/.workspace-office/service-rules.txt` and replace them:
+
+      cpu > 90 for 2m       -> degraded "CPU above 90% for 2 minutes"
+      mem rises 15 in 10m   -> degraded "Memory climbing: up {delta} points (a leak?)"
+      temp > 100            -> failure  "Overheating ({value}°C)"
+
+  A line is `<metric> <op> <number> [for <duration>] -> degraded|failure "message"` or `<metric> rises <n> in <duration> -> ...` (a steady climb, not a
+  spike). A line the host cannot read is reported in its log with the line number. Over the HTTP API, send `"metrics": {"cpu": 41, "mem": 62}` in the heartbeat body.
 - **Services** always appear as orbs, in a colour of their own (stable per name). Pick the orb style (Spark, Strato or Chorus) on the Config page.
 - **Order**: worst first (failure, stalled, active, listening, idle, ghost) so trouble is on page one.
 - **Routes**: `GET /hive/state` (JSON), `GET /hive/stream` (server-sent events), both read-only like the screen; `POST /api/heartbeat` needs the key.

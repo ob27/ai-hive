@@ -102,6 +102,9 @@ export class DemoSim {
         id: s.id, name: s.name, kind: "service", project: s.project,
         status: silent || leaking ? "failure" : "active",
         statusLabel: silent ? "Not responding" : leaking ? "Degraded" : "Healthy",
+        ...(silent ? {} : leaking
+          ? { metrics: { cpu: 41, mem: Math.round(78 + (now % 60_000) / 4000), load: 55, disk: 63, at: now }, metricStates: { mem: "warn" as const }, signs: ["Memory climbing: up 18 points in 10 minutes (a leak?)"] }
+          : { metrics: { cpu: Math.round(rand(12, 38)), mem: Math.round(rand(44, 52)), load: Math.round(rand(10, 30)), disk: 91, temp: s.id === "dsl" ? 62 : undefined, at: now }, metricStates: { disk: "warn" as const } }),
         activity: silent ? `${s.name}: no heartbeat, likely failed` : leaking ? `${s.name}: memory climbing, may be leaking` : `${s.name}: heartbeat #${s.beat}`,
       });
     }

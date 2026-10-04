@@ -204,3 +204,14 @@ test('a slow-and-steady agent is allowed longer before Focusing than a quick one
   c.advance(50_000); assert.equal(find(fresh, 's-New').statusLabel, 'Active Now');
   c.advance(15_000); assert.equal(find(fresh, 's-New').statusLabel, 'Focusing');
 });
+
+test('a very long service name is cut so it cannot ruin the card, and its id is untouched', () => {
+  const s = new HiveStore();
+  s.heartbeat({ id: 'a-service-with-a-really-quite-long-identifier', name: 'The Very Long Named Document Archive Ingestion Worker Service (production, eu-west)' });
+  s.heartbeat({ id: 'short', name: 'DSL   Service' });
+  const long = s.snapshot().find((m) => m.id.startsWith('a-service'));
+  assert.equal(long.name.length, 28);
+  assert.ok(long.name.endsWith('…'));
+  assert.equal(long.id, 'a-service-with-a-really-quite-long-identifier');
+  assert.equal(s.snapshot().find((m) => m.id === 'short').name, 'DSL Service', 'runs of spaces are tidied too');
+});

@@ -167,6 +167,8 @@ curl -s -X POST http://<host>:3101/api/heartbeat -H "Authorization: Bearer <KEY>
   -d '{"id":"my-service","name":"My Service","project":"my-project","status":"ok","message":"what it does","ttlSec":60}'
 ```
 
+A heartbeat may also carry `"metrics": {"cpu": 41, "mem": 62, "load": 55, "disk": 70, "temp": 61}` (percents, and °C for temp; all optional): the host's rules (`src/service-rules.mjs`) watch them and turn a steady memory climb, a pinned CPU or a hot machine into a status with the reason, whatever the service reports about itself. `hive heartbeat --metrics` fills them in for you.
+
 Heartbeat `status` is `ok`, `degraded` (shows as a failure: "I think I'm leaking memory") or `failure`; `gone` removes the service. Silence past `ttlSec`
 shows as likely failed. `hive heartbeat --every 30` does this for you.
 

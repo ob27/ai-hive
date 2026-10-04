@@ -28,7 +28,9 @@ export const chatAvailable = (members: HiveMember[]) => members.some((m) => m.ki
 import { DemoSim } from "./demo";
 
 /** What the host sends: an AgentWallMember plus when it last reported. See rebarui/ref/AI_HIVE.md. */
-export type HiveMember = Omit<AgentWallMember, "status"> & { status?: HiveStatus; updatedAt?: number; chatty?: boolean; reports?: "hooks" | "chirps"; tools?: string[]; chatOpen?: boolean };
+export type MetricKey = "cpu" | "mem" | "load" | "disk" | "temp";
+export type HiveMetrics = Partial<Record<MetricKey, number>> & { at: number };
+export type HiveMember = Omit<AgentWallMember, "status"> & { metrics?: HiveMetrics; metricStates?: Partial<Record<MetricKey, "warn" | "bad">>; signs?: string[]; status?: HiveStatus; updatedAt?: number; chatty?: boolean; reports?: "hooks" | "chirps"; tools?: string[]; chatOpen?: boolean };
 
 const BASE = import.meta.env.BASE_URL; // "/hive/"
 

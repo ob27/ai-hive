@@ -70,16 +70,24 @@ export function createDemoSim({ store, buzz, quiet = { on: false }, canned = tru
 
   async function service(id, proj, { outageEvery, outageFor, leakEvery, leakFor }, g) {
     const name = SERVICES[id];
-    let outageAt = Date.now() + expo(outageEvery), outageUntil = 0, leakAt = Date.now() + expo(leakEvery), leakUntil = 0, beat = 0;
+    let outageAt = Date.now() + expo(outageEvery), outageUntil = 0, leakAt = Date.now() + expo(leakEvery), leakUntil = 0, beat = 0, heatUntil = 0;
+    const base = { cpu: rand(15, 40), mem: rand(38, 55), load: rand(20, 60), disk: rand(55, 72), temp: rand(52, 62) };
+    const m = { ...base };
     while (alive(g)) {
       const now = Date.now();
       if (now >= outageAt) { outageUntil = now + rand(...outageFor); outageAt = outageUntil + expo(outageEvery); }
       if (now >= leakAt) { leakUntil = now + rand(...leakFor); leakAt = leakUntil + expo(leakEvery); }
       if (now >= outageUntil) {                           // during an outage it simply goes quiet
         beat++;
-        store.heartbeat(now < leakUntil
-          ? { id, name, project: proj, status: 'degraded', message: 'memory climbing, may be leaking', ttlSec: 15 }
-          : { id, name, project: proj, message: `${name}: heartbeat #${beat}`, ttlSec: 15 });
+        // The machine it runs on: readings that wander, a memory that climbs steadily while it is leaking, a heat spike now and then.
+        const walk = (v, lo, hi, step) => Math.max(lo, Math.min(hi, v + rand(-step, step)));
+        m.cpu = walk(m.cpu, 8, 75, 9); m.load = walk(m.load, 10, 120, 12); m.temp = walk(m.temp, 48, 74, 2.5);
+        m.mem = now < leakUntil ? Math.min(98, m.mem + rand(1.5, 3.5)) : Math.max(base.mem, m.mem - rand(1, 4));
+        if (id === 'dsl' && Math.random() < 0.03) heatUntil = now + 40_000;
+        if (now < heatUntil) m.temp = Math.min(104, m.temp + rand(6, 11));
+        const metrics = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, Math.round(v * 10) / 10]));
+        // Only the metrics say it is struggling: the Hive's rules turn a steady climb or a heat spike into the status.
+        store.heartbeat({ id, name, project: proj, message: now < leakUntil ? 'memory climbing' : `${name}: heartbeat #${beat}`, ttlSec: 15, metrics });
       }
       await sleep(rand(3000, 7000));
     }

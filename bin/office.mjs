@@ -16,6 +16,7 @@ import { startProxy } from '../src/proxy.mjs';
 // that the CLI download served to seat machines does not include, so a static import would crash every `join`.
 import { defaultName } from '../src/names.mjs';
 import { installCli, reportCommand } from '../src/install.mjs';
+import { sampleMachine } from '../src/machine-stats.mjs';
 import { logSummary, heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
@@ -236,7 +237,10 @@ switch (cmd) {
   }
   case 'heartbeat': {
     const id = flag('id');
-    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs]');
+    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value]');
+    const withMetrics = bool('metrics'); // stream this machine's cpu / memory / load / disk / temperature with each heartbeat
+    const fixed = {}; // --metric temp=61 (repeatable): a reading the machine cannot give by itself
+    for (let m; (m = flag('metric')) !== undefined;) { const [k, v] = String(m).split('='); if (k && Number.isFinite(Number(v))) fixed[k] = Number(v); }
     const logs = bool('logs'); // the message is the host's own log tail (the host's Hive Web App heartbeat)
     const fields = { id, name: flag('name'), project: flag('project'), status: flag('status'), message: flag('message'), ttl: flag('ttl') };
     const every = flag('every');
@@ -255,7 +259,8 @@ switch (cmd) {
           lastLine = s.last; extra = { status: s.status, message: s.message, ...extra };
         } catch { /* the host will not answer a heartbeat either: that failure is reported below */ }
       }
-      const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra }));
+      const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine() : {}), ...fixed } : undefined;
+      const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra, metrics }));
       if (!r.ok) console.error(`hive: heartbeat failed: ${r.error}`);
       return r.ok;
     };

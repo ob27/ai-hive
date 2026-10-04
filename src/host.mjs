@@ -9,6 +9,7 @@ import { HiveStore } from './hive.mjs';
 import { chooseInvitees } from './chat.mjs';
 import { Ledger } from './production.mjs';
 import { Roster } from './roster.mjs';
+import { loadRules } from './service-rules.mjs';
 import { BuzzLog, watchHive } from './buzz.mjs';
 import { RESPONDER_DEFAULTS, anthropicComplete, createResponder } from './responder.mjs';
 import { describeSettings } from './hive-http.mjs';
@@ -55,7 +56,9 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
   // The Hive: who is on the wall. Fed by the hook events agents send, plus service heartbeats.
   const monitor = new Monitor({ role: 'host' });
   monitor.captureConsole(); // what the host prints, and what it crashes with, is kept for `hive logs`
-  const hive = new HiveStore({ ledger: new Ledger() }).start();
+  const serviceRules = loadRules(); // what the Hive watches for in the machine stats services stream
+  for (const e of serviceRules.errors) console.error(`hive: ${serviceRules.from} line ${e.line}: ${e.error}: ${e.text}`);
+  const hive = new HiveStore({ ledger: new Ledger(), rules: serviceRules.rules }).start();
   const buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(hive, thread, m) });
   hive.connect(buzz);
   // The bots answer people (and react to real failures) only if a model key is set: opt-in, capped, and every line is marked host-voiced.

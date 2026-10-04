@@ -9,6 +9,7 @@
 //   POST /api/buzz        keyed. A chatty agent says a line.   GET /buzz (keyed): the thread, for agents to read
 //   GET  /hive/...        the built Hive screen (hive-ui/dist), SPA-style
 import { NOBODY_MESSAGE } from './chat.mjs';
+import { METRICS } from './service-rules.mjs';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import { extname, join, normalize, sep } from 'node:path';
@@ -51,7 +52,20 @@ export function parseHeartbeat(body) {
     if (!Number.isInteger(body.ttlSec) || body.ttlSec < 5 || body.ttlSec > 86400) return { error: 'ttlSec must be a whole number of seconds from 5 to 86400' };
     ttlSec = body.ttlSec;
   }
-  return { value: { id, name, project, status, message, ttlSec } };
+  // Readings from the machine the service runs on (see machine-stats.mjs). Anything else in the object is ignored.
+  let metrics;
+  if (body.metrics !== undefined) {
+    if (!body.metrics || typeof body.metrics !== 'object' || Array.isArray(body.metrics)) return { error: 'metrics must be an object like { "cpu": 40, "mem": 62 }' };
+    metrics = {};
+    for (const k of METRICS) {
+      const v = body.metrics[k];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== 'number' || !Number.isFinite(v)) return { error: `metrics.${k} must be a number` };
+      metrics[k] = k === 'temp' ? Math.max(-50, Math.min(250, v)) : Math.max(0, Math.min(1000, v));
+    }
+    if (!Object.keys(metrics).length) metrics = undefined;
+  }
+  return { value: { id, name, project, status, message, ttlSec, ...(metrics ? { metrics } : {}) } };
 }
 
 /** POST /api/heartbeat. Returns true when it handled the request. */

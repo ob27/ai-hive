@@ -19,12 +19,13 @@ export async function postHeartbeat(url, key, body) {
 }
 
 /** The request body for the CLI's flags. */
-export function heartbeatBody({ id, name, project, status, message, ttl }) {
+export function heartbeatBody({ id, name, project, status, message, ttl, metrics }) {
   const body = { id, status: status ?? 'ok' };
   if (name) body.name = name;
   if (project) body.project = project;
   if (message) body.message = message;
   if (ttl !== undefined) body.ttlSec = Number(ttl);
+  if (metrics && Object.keys(metrics).length) body.metrics = metrics;
   return body;
 }
 
