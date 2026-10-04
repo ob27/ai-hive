@@ -116,19 +116,18 @@ export class BuzzLog {
       };
       let endsAt = Date.now() + waitMs;
       const cap = endsAt + this.cfg.extendMs;
-      let timer = setTimeout(() => done([]), waitMs);
-      timer.unref?.();
+      let timer = setTimeout(() => done([]), waitMs); // not unref'd: whoever awaits this wait must be kept alive until it ends
       const check = () => {
         const got = fresh();
         if (got.length) return done(got);
         clearTimeout(tick);
         if (later.at !== Infinity) {
           const wait = Math.max(50, later.at - this.now());
-          tick = setTimeout(check, wait); tick.unref?.();
+          tick = setTimeout(check, wait);
           // A line that is ours but still queued behind an earlier invitee must not be missed because this wait ran out a moment before
           // its turn: stretch the wait to cover it (within extendMs).
           const want = Math.min(Date.now() + wait + 500, cap);
-          if (want > endsAt) { endsAt = want; clearTimeout(timer); timer = setTimeout(() => done([]), endsAt - Date.now()); timer.unref?.(); }
+          if (want > endsAt) { endsAt = want; clearTimeout(timer); timer = setTimeout(() => done([]), endsAt - Date.now()); }
         }
       };
       off = this.subscribe(check);
