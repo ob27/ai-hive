@@ -76,6 +76,24 @@ export async function readCursor(seat) {
 }
 export const writeCursor = (seat, id) => writeFileSync(cursorFile(seat), String(id));
 
+// A manual `hive listen` loop (an agent asked to sit in the chat) must not run for ever: after a few quiet listens in a row the Hive tells it
+// to stop and go back to what it was doing. (The end-of-turn hook already ends its own wait when nobody speaks.)
+export const QUIET_LISTENS_BEFORE_RESUME = 2;
+const quietFile = (seat) => pidFile(seat.name).replace(/\.watch\.pid$/, '.quiet');
+
+/** Record one listen that returned (`quiet`: nothing was said). -> { resume, minutes }: resume is true once it has been quiet long enough to send the agent back to work. */
+export function noteListen(seat, quiet, waitSec = LISTEN_WAIT_SEC) {
+  if (!quiet) { rmSync(quietFile(seat), { force: true }); return { resume: false, minutes: 0 }; }
+  let n = 0;
+  try { n = Number(readFileSync(quietFile(seat), 'utf8')) || 0; } catch { /* first quiet one */ }
+  n += 1;
+  if (n >= QUIET_LISTENS_BEFORE_RESUME) { rmSync(quietFile(seat), { force: true }); return { resume: true, minutes: Math.max(1, Math.round((n * waitSec) / 60)) }; }
+  writeFileSync(quietFile(seat), String(n));
+  return { resume: false, minutes: 0 };
+}
+
+export const RESUME_MESSAGE = (minutes) => `Nobody has spoken in Hive Chat for about ${minutes} minute${minutes === 1 ? '' : 's'}. Stop listening now and go back to what you were doing before you were asked to listen. Do not run \`hive listen\` again unless someone asks you to.`;
+
 export const formatLine = (m) => `#${m.id} ${m.kind === 'system' ? `[${m.from}]` : m.kind === 'human' ? (m.from === 'Human' ? 'Human' : `${m.from} (human)`) : m.from}${m.quote ? ` (replying to #${m.quote.id})` : ''}: ${m.text}`;
 
 export function chatPrompt(lines) {

@@ -202,3 +202,53 @@ test('a Cursor-only agent cannot be tapped (Cursor has no hook that carries text
   assert.equal(s.takeNotice('s-Cur'), null, 'nothing was queued');
   assert.match(s.tap('s-Both').text, /tapped you on the shoulder/);
 });
+
+test('"Ask to listen" is only for a working, chatty agent; anyone else is told why not', () => {
+  const c = clock(); const s = new HiveStore({ now: c.now });
+  s.observe(ev('Busy', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: true, hooks: ['claude'] });
+  s.observe(ev('Quiet', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: false, hooks: ['claude'] });
+  s.observe(ev('Idle', 'Stop'), { chatty: true, hooks: ['claude'] });
+  s.observe(ev('Cur', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a' } }), { chatty: true, hooks: ['cursor'] });
+  c.advance(2 * MIN); // long enough for the one that stopped to be idle (no longer listening) rather than just-finished
+  s.observe(ev('Busy', 'PostToolUse')); s.observe(ev('Quiet', 'PostToolUse')); s.observe(ev('Cur', 'PostToolUse'));
+  const ok = s.askToListen('s-Busy', 'tom');
+  assert.match(ok.text, /^tom would like you in Hive Chat[\s\S]*hive listen[\s\S]*keep listening until the person you work for tells you to stop/);
+  assert.equal(s.takeNotice('s-Busy'), ok.text, 'it reaches the agent on its next event');
+  assert.match(s.askToListen('s-Quiet').refused, /did not join with --chatty/);
+  assert.match(s.askToListen('s-Idle').refused, /not working right now/);
+  s.observe(ev('Fresh', 'Stop'), { chatty: true, hooks: ['claude'] });
+  assert.match(s.askToListen('s-Fresh').refused, /already listening/);
+  assert.match(s.askToListen('s-Cur').refused, /Cursor/);
+  assert.equal(s.askToListen('nobody'), null);
+});
+
+test('the cog\'s Ask to listen reaches a working agent on its next hook event, and refuses an idle one with a reason', async () => {
+  assert.equal((await run(['join', ingestAddr, 'Lee', '--key', KEY, '--chatty', '--claude'])).status, 0);
+  const id = find(store, 'Lee').id;
+  assert.equal((await admin({ action: 'listen', id, key: KEY })).status, 409, 'idle: nothing running to receive it');
+  await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'a.js' }, session_id: 'x', cwd: home });
+  assert.equal((await admin({ action: 'listen', id, key: KEY, by: 'tom' })).status, 204);
+  assert.ok(buzz.list(5).some((l) => /tom asked Lee to listen/.test(l.text)));
+  const r = await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PostToolUse', tool_name: 'Edit', session_id: 'x', cwd: home });
+  assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /^\[Hive\] tom would like you in Hive Chat[\s\S]*hive listen/);
+  assert.equal((await admin({ action: 'listen', id: 'ghost', key: KEY })).status, 404);
+  await run(['leave', '--seat', 'Lee']);
+});
+
+test('a manual listen loop ends itself: after a few quiet listens the CLI tells the agent to go back to its task, and any chat resets it', async () => {
+  assert.equal((await run(['join', ingestAddr, 'Pip', '--key', KEY, '--chatty', '--claude'])).status, 0);
+  const listen = () => run(['listen', '--seat', 'Pip', '--wait', '1']);
+  const first = await listen();
+  assert.equal(first.status, 3);
+  assert.match(first.out, /^\(quiet: nothing new in the buzz\. Run `hive listen` again/);
+  const second = await listen();
+  assert.match(second.out, /^Nobody has spoken in Hive Chat for about \d+ minutes?\. Stop listening now and go back to what you were doing/);
+  assert.match((await listen()).out, /^\(quiet/, 'it starts counting again');
+  // someone speaks: the count is reset, so the next quiet one is just quiet again
+  const pending = listen();
+  await until(() => buzz.isWaiting('Pip'));
+  buzz.post({ from: 'tom', kind: 'human', text: 'hi Pip' });
+  assert.match((await pending).out, /tom \(human\): hi Pip/);
+  assert.match((await listen()).out, /^\(quiet/);
+  await run(['leave', '--seat', 'Pip']);
+});

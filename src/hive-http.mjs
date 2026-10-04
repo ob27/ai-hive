@@ -245,9 +245,10 @@ export function handleHiveRead(req, res, store, uiDir, buzz = null, info = {}) {
 }
 
 /**
- * POST /hive/admin { action: 'boot' | 'tap', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
+ * POST /hive/admin { action: 'boot' | 'tap' | 'listen', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
  * hive key (the same one agents join with); the wall asks for it once.
  *   boot  take the agent off the wall; its events are ignored until it rejoins, and it is told once, on its next event, that it was removed.
+ *   listen  ask a working, chatty agent to come and sit in the chat when it reaches a stopping point (it runs `hive listen`).
  *   tap   put a message in front of the agent (at once if it is sitting in the chat, else on its next event) asking it to fix its seating.
  */
 export function handleAdmin(req, res, { hive, buzz, key }) {
@@ -270,7 +271,14 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       buzz?.poke(t.name); // an agent sitting in the chat hears it now
       return void res.writeHead(204).end();
     }
-    json(res, 400, { error: 'action must be boot or tap' });
+    if (body.action === 'listen') {
+      const t = hive.askToListen(body.id, by);
+      if (!t) return json(res, 404, { error: 'that agent is not on the wall any more' });
+      if (t.refused) return json(res, 409, { error: t.refused });
+      buzz?.post({ from: 'hive', kind: 'system', text: `${by} asked ${t.name} to listen.` });
+      return void res.writeHead(204).end();
+    }
+    json(res, 400, { error: 'action must be boot, tap or listen' });
   });
   return true;
 }

@@ -109,8 +109,10 @@ clock, and canned bot replies. It is also a real, joinable hive: its Join page w
 - **Hive Production** (`src/production.mjs`): every finished turn counts for the agent's slot, the pool is shown in the header, and clicking it
   explains itself. Counts live in `~/.workspace-office/production.json`, so they survive restarts, renames and an agent leaving. Joining is not a
   turn. Turns counted under a plain name before slots existed move onto the slot when that name joins.
-- **The cog** on an agent's details has two actions, both needing the hive key (asked once): **Tap on shoulder** puts a message in front of the
-  agent asking it to fix its seating (at once if it is in the chat, else on its next hook event), and **Boot from hive** removes it, ignores its
+- **The cog** on an agent's details has up to three actions, all needing the hive key (asked once): **Tap on shoulder** puts a message in front of the
+  agent asking it to fix its seating (at once if it is in the chat, else on its next hook event); **Ask to listen** (only for a working, chatty agent)
+  asks it to sit in Hive Chat when it reaches a stopping point by running `hive listen`, and if nobody speaks for a couple of listens the CLI tells it to
+  stop and go back to what it was doing; and **Boot from hive** removes it, ignores its
   events until it rejoins, and tells it once. Cursor cannot receive text from a hook, so both are disabled for Cursor-only agents.
   `POST /hive/admin {action, id, key}`.
 

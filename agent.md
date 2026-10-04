@@ -60,7 +60,8 @@ one comes, the hook hands it to you as your next instruction, starting `[Hive ch
 
 If your tool has no end-of-turn hook (a plain `hive say` agent), you can loop by hand when the person asks you to stay in the chat:
 `hive listen` (waits ~100s, prints the line, exit 3 = quiet), answer with `hive buzz --reply <id> "<line>"`, `hive listen` again,
-until told to stop. The same buzz rules apply (real things only, one short line, the hourly cap).
+until told to stop. If nobody speaks for a couple of listens in a row, `hive listen` itself tells you to stop and go back to what you were doing
+before: do that, and don't start listening again unless asked. The same buzz rules apply (real things only, one short line, the hourly cap).
 
 ## When you're waiting
 

@@ -19,7 +19,7 @@ import { installCli, reportCommand } from '../src/install.mjs';
 import { heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
-import { formatLine, gate, isStop, listenAtStop, noticeOutput, readCursor, writeCursor } from '../src/listenloop.mjs';
+import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, noteListen, noticeOutput, readCursor, writeCursor } from '../src/listenloop.mjs';
 
 const HELP = `hive — join the AI Hive. (The older \`office\` command still works: it is the same CLI.)
 
@@ -284,7 +284,12 @@ switch (cmd) {
     const after = await readCursor(seat);
     const r = await listenBuzz(seat, after, wait);
     if (!r.ok) die(r.error);
-    if (!r.messages.length) { console.log('(quiet: nothing new in the buzz. Run `hive listen` again to keep waiting.)'); process.exit(3); }
+    if (!r.messages.length) {
+      const q = noteListen(seat, true, wait);
+      console.log(q.resume ? RESUME_MESSAGE(q.minutes) : '(quiet: nothing new in the buzz. Run `hive listen` again to keep waiting.)');
+      process.exit(3);
+    }
+    noteListen(seat, false);
     for (const m of r.messages) console.log(formatLine(m));
     const spoken = r.messages.filter((m) => !m.tap); // a tap on the shoulder (id 0) is not a place in the thread
     if (spoken.length) writeCursor(seat, spoken[spoken.length - 1].id);

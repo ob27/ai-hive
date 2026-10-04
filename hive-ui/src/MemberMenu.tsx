@@ -11,9 +11,10 @@ export function MemberMenu({ member, onBooted }: { member: HiveMember; onBooted:
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [needKey, setNeedKey] = useState(false);
-  const [pending, setPending] = useState<"tap" | "boot" | null>(null);
+  const [pending, setPending] = useState<"tap" | "boot" | "listen" | null>(null);
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
+  const lastAction = useRef<"tap" | "listen">("tap"); // what the key box sends once a key is entered
   const root = useRef<HTMLDivElement>(null);
   const cog = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -33,12 +34,12 @@ export function MemberMenu({ member, onBooted }: { member: HiveMember; onBooted:
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
-  const run = async (action: "tap" | "boot", typed?: string) => {
+  const run = async (action: "tap" | "boot" | "listen", typed?: string) => {
     setPending(action); setMsg(null);
     const r = await adminAction(action, member.id, typed);
     if (r.ok) {
       setNeedKey(false);
-      setMsg({ text: action === "tap" ? `Tapped ${member.name} on the shoulder. It will see it on its next move.` : `Booted ${member.name}.`, bad: false });
+      setMsg({ text: action === "tap" ? `Tapped ${member.name} on the shoulder. It will see it on its next move.` : action === "listen" ? `Asked ${member.name} to listen. It will see this on its next move.` : `Booted ${member.name}.`, bad: false });
       setTimeout(() => { close(false); if (action === "boot") onBooted(); }, 1600);
       return; // pending stays set so the buttons stay disabled until close
     }
@@ -57,6 +58,8 @@ export function MemberMenu({ member, onBooted }: { member: HiveMember; onBooted:
   };
 
   const done = msg && !msg.bad;
+  // Only a working, chatty agent can be asked to listen: an idle one has no hook running to receive the request.
+  const canAskListen = member.chatty === true && member.status === "active";
   // Cursor has no hook that carries text back to the agent, so neither a tap nor the boot notice can reach it: both are switched off.
   const noMail = !!member.tools?.length && member.tools.every((t) => t === "cursor");
   const noMailWhy = "Cursor can't receive messages from the Hive, so this isn't available for this agent.";
@@ -95,14 +98,15 @@ export function MemberMenu({ member, onBooted }: { member: HiveMember; onBooted:
             </div>
           ) : (
             <>
-              <button type="button" role="menuitem" disabled={!!pending || noMail} title={noMail ? noMailWhy : undefined} onClick={() => run("tap")} style={{ ...item, ...(noMail ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}>Tap on shoulder</button>
+              <button type="button" role="menuitem" disabled={!!pending || noMail} title={noMail ? noMailWhy : undefined} onClick={() => { lastAction.current = "tap"; void run("tap"); }} style={{ ...item, ...(noMail ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}>Tap on shoulder</button>
+              {canAskListen ? <button type="button" role="menuitem" disabled={!!pending || noMail} title={noMail ? noMailWhy : "Ask it to sit in Hive Chat when it reaches a stopping point"} onClick={() => { lastAction.current = "listen"; void run("listen"); }} style={{ ...item, ...(noMail ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}>Ask to listen</button> : null}
               <button type="button" role="menuitem" disabled={!!pending || noMail} title={noMail ? noMailWhy : undefined} onClick={() => { setConfirming(true); setMsg(null); }} style={{ ...item, color: danger, ...(noMail ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}>Boot from hive</button>
               {noMail ? <div style={{ fontSize: 12, padding: "2px 6px 4px", color: "var(--rebar-color-text-secondary, #555)" }}>{noMailWhy}</div> : null}
             </>
           )}
           {needKey && !done ? (
             <form
-              onSubmit={(e) => { e.preventDefault(); if (key.trim()) void run(confirming ? "boot" : "tap", key); }}
+              onSubmit={(e) => { e.preventDefault(); if (key.trim()) void run(confirming ? "boot" : lastAction.current, key); }}
               style={{ display: "flex", gap: 6, padding: "0 6px" }}
             >
               <input
