@@ -19,6 +19,7 @@ import { cliDir, installCli, reportCommand } from '../src/install.mjs';
 import { sampleMachine } from '../src/machine-stats.mjs';
 import { logSummary, heartbeatBody, postHeartbeat, readNew, createBuzzScanner } from '../src/heartbeat.mjs';
 import { extractBuzz } from '../src/servicebuzz.mjs';
+import { ADAPTERS, collectHistory, importSource } from '../src/history-import.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
 import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, listenWithCursor, noteListen, noticeOutput, writeCursor } from '../src/listenloop.mjs';
@@ -48,6 +49,7 @@ const HELP = `hive — join the AI Hive. (The older \`office\` command still wor
   hive listen [--wait S] [--seat <name>]                      sit in the chat: wait (default 100s) for someone else to speak, print it, exit (3 = quiet)
   hive buzz "<a line>" [--seat <name>]                       say something in the hive's chat (needs: join … --chatty)
   hive buzz "<a line>" --reply <id>                         answer a line (it shows quoted); get ids from --read
+  hive import-history [--tool claude,qwen,copilot,gemini,codex|all] [--dry-run] [--since YYYY-MM-DD]   one-off: re-score this machine's agent history into the production heatmap
   hive handoff "<note>" [--seat <name>]                      leave a note for whoever finishes last on your project (needs: join … --chatty)
   hive buzz --read [--limit 20]                             read the recent buzz (with ids) before you reply
   hive status [--url host[:ingest]] [--screen 3100] [--key K] [--members] [--json] [--watch SECS]
@@ -206,6 +208,31 @@ switch (cmd) {
   case 'respond': { const seat = loadSeat(flag('seat')); process.exit((await chirp(seat, `responding to ${rest.join(' ') || 'you'}`, { tool: 'Bash' })) ? 0 : 1); break; }
   case 'idle': await idle(loadSeat(flag('seat'))); break;
   case 'update': {
+  case 'import-history': {
+    // One-off: re-score the history this machine's agent tools kept, so the production heatmap has a past (see src/history-import.mjs).
+    const want = (flag('tool') ?? 'all').split(',').map((x) => x.trim()).filter(Boolean);
+    const tools = want.includes('all') ? Object.keys(ADAPTERS) : want;
+    for (const t of tools) if (!ADAPTERS[t]) die(`unknown tool "${t}" (use ${Object.keys(ADAPTERS).join(', ')}, or all)`);
+    if (flag('dir') && tools.length !== 1) die('--dir needs one --tool (it is where that tool keeps its history)');
+    const found = tools.map((t) => collectHistory(t, { dir: flag('dir'), since: flag('since') })).filter((h) => h.files > 0);
+    if (!found.length) { console.log(`Nothing to import: no history found for ${tools.join(', ')} on this machine.`); break; }
+    for (const h of found) {
+      const days = Object.keys(h.days).sort();
+      console.log(`${h.name}: ${h.files} file(s), ${h.turns} turns over ${days.length} day(s)${days.length ? `, ${days[0]} to ${days.at(-1)}` : ''}${h.verified ? '' : '  [format not yet checked against a real install]'}`);
+      for (const [name, n] of Object.entries(h.projects).sort((a, b) => b[1] - a[1]).slice(0, 5)) console.log(`    ${name.padEnd(26)} ${n}`);
+    }
+    if (bool('dry-run')) { console.log('(dry run: nothing sent)'); break; }
+    let url = flag('url') ?? process.env.HIVE_URL ?? process.env.OFFICE_URL, key = flag('key') ?? process.env.HIVE_KEY ?? process.env.OFFICE_KEY;
+    if (!url || !key) { try { const seat = loadSeat(flag('seat')); url ??= seat.url; key ??= seat.token; } catch { /* below */ } }
+    if (!url || !key) die('no host or key: pass --url and --key, set HIVE_URL / HIVE_KEY, or join the hive first (or use --dry-run)');
+    for (const h of found.filter((x) => x.turns > 0)) {
+      const res = await fetch(`${normalizeUrl(url)}/api/history`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: JSON.stringify({ source: importSource(h.tool), days: h.days }), signal: AbortSignal.timeout(10_000) }).catch((e) => die(`could not reach ${url} (${e.message})`));
+      if (!res.ok) die(`the Hive answered ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+      console.log(`Sent ${Object.keys(h.days).length} day(s) of ${h.name} as ${importSource(h.tool)}.`);
+    }
+    console.log('Running it again replaces these imports, it never adds to them. Days from when the Hive began dating production live are left as recorded.');
+    break;
+  }
     // Your hooks run the CLI copy installed under ~/.workspace-office/cli, and only `join` refreshes it. Fetch the host's current one.
     const seat = loadSeat(flag('seat'));
     const into = flag('into') ?? cliDir;

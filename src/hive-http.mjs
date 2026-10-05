@@ -100,13 +100,13 @@ export function handleHeartbeat(req, res, store, key, serviceBuzz = null) {
 }
 
 /** Reads and parses a small JSON body; answers 400/413 itself and resolves null when it did. */
-function readJson(req, res) {
+function readJson(req, res, maxBody = MAX_BODY) {
   return new Promise((resolve) => {
     const chunks = [];
     let size = 0;
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) { json(res, 413, { error: 'body too large' }); req.destroy(); resolve(null); return; }
+      if (size > maxBody) { json(res, 413, { error: 'body too large' }); req.destroy(); resolve(null); return; }
       chunks.push(c);
     });
     req.on('end', () => {
@@ -309,6 +309,21 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       return void res.writeHead(204).end();
     }
     json(res, 400, { error: 'action must be boot or listen' });
+  });
+  return true;
+}
+
+/** POST /api/history (keyed): { source, days: { 'YYYY-MM-DD': n } }. A machine's re-scored past (hive import-history); replaces that source's earlier import. */
+export function handleHistoryPost(req, res, store, key) {
+  if (req.method !== 'POST' || req.url.split('?')[0] !== '/api/history') return false;
+  if (!same(req.headers.authorization ?? '', `Bearer ${key}`)) { res.writeHead(401).end('unauthorized'); return true; }
+  readJson(req, res, 64 * 1024).then((body) => {
+    if (!body) return;
+    if (!store.ledger) return json(res, 404, { error: 'this host does not keep production' });
+    if (typeof body.source !== 'string' || !/^[\w.@-]{1,80}$/.test(body.source)) return json(res, 400, { error: 'source must be a short name like claude-transcripts@laptop' });
+    if (!body.days || typeof body.days !== 'object' || Array.isArray(body.days)) return json(res, 400, { error: 'days must be an object of date -> production' });
+    const kept = store.ledger.setHistory(body.source, body.days);
+    json(res, 200, { days: kept });
   });
   return true;
 }

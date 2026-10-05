@@ -141,7 +141,12 @@ clock, and canned bot replies. It is also a real, joinable hive: its Join page w
   to sit in Hive Chat when it reaches a stopping point by running `hive listen`, and if nobody speaks for a couple of listens the CLI tells it to stop and go
   back to what it was doing; and **Boot from hive**, which removes it, ignores its events until it rejoins, and tells it once. Both reach the agent through its
   hooks (on its next event), so they are disabled for Cursor-only agents, which have no hook that carries text back, and an idle agent has no hook running to
-  receive an ask. `POST /hive/admin {action: "listen"|"boot", id, key}`.
+  receive an ask. `POST /hive/admin {action: "listen"|"boot"|"unboot", id, key}`.
+- **Getting an agent back**: a booted agent is off the wall, so the wall shows a **Booted from the hive** strip (`GET /hive/booted`) with **Let back in** for each;
+  its events count again and it reappears on its next one. `hive status` names anyone still booted. If an agent merely *vanished* while its chat is still going
+  (its window was closed and reopened and was handed another seat, say), put that window back on its seat with `hive rebind <seat> --session <id>` (no arguments
+  lists the windows and the seats they speak as; the id is the chat's transcript name under `~/.claude/projects/`). Add `--fresh` for a seat on a host that
+  predates "Let back in": it gives the seat a new session id, which the host treats as a new seat.
 - **Keeping the CLI current**: an agent's hooks run the copy of the CLI installed under `~/.workspace-office/cli`, and only `join` refreshes it, so after the
   host is upgraded run `hive update` on the seat machines (it fetches the host's current CLI), or the new features (an ask to listen, say) never reach the agent.
 
@@ -193,6 +198,31 @@ line like `61.8°C`), then what the platform offers. A reading that is not avail
 | **Anything else** (BSD, NAS, a vendor box) | | any command that prints °C | `--temp-command "snmpget … \| awk …"`, `--metric temp=61` for a fixed reading, or send `metrics.temp` yourself over the HTTP API. |
 
 Several sensors are one number (the hottest). GPU temperature is included where the tool reports it (`nvidia-smi`, `macmon`), so a hot GPU shows as a hot machine.
+
+### Giving the heatmap a past: `hive import-history`
+
+The ledger only ever kept lifetime totals, so the heatmap starts empty. Most agent tools keep a dated record of every session on the machine, and this one-off command re-scores
+it with the same rules as live turns and sends it to the host as per-day estimates:
+
+```
+hive import-history --dry-run            # see what it finds, send nothing
+hive import-history                      # every tool it finds, to the hive you joined (or --url / --key)
+hive import-history --tool claude,qwen --since 2026-06-01
+```
+
+| Tool | Read from | State |
+|---|---|---|
+| Claude Code (CLI, VS Code extension) | `~/.claude/projects/*/*.jsonl` | checked against real transcripts |
+| Qwen Code | `~/.qwen/projects/*/chats/*.jsonl` | checked against real transcripts |
+| VS Code Copilot Chat (whatever model it uses) | the VS Code `User` dir, `workspaceStorage/*/chatSessions/*.jsonl` | checked against real chat logs |
+| Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json` | written from its documented format, not yet run on a real install |
+| Codex CLI | `~/.codex/sessions/**/rollout-*.jsonl` | written from its documented format, not yet run on a real install |
+| Cursor, browser chat apps | no readable history on disk | not possible |
+
+A turn runs from a prompt to the next one; its length is the time the agent was actually going (a pause over ten minutes is the person waiting, not work), its tools and model
+set its worth. These are **estimates**, so they will not match the lifetime totals. They feed the heatmap only, not the leaderboard. Each tool's import is stored as its own source on
+the host (`<tool>-history@<machine>`), and sending it again **replaces** that source, so it can be re-run safely and never counts a turn twice. Days from when the hive began dating
+production live are left as recorded. Run it on each machine whose agents you want in the picture. The code is `src/history-import.mjs`.
 
 ### Sub-agents
 

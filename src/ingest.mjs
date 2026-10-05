@@ -15,7 +15,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { bootstrapScript, cliFiles, cliVersion } from './bootstrap.mjs';
 import { createServiceBuzz } from './servicebuzz.mjs';
-import { handleBuzzPost, handleBuzzRead, handleHandoffPost, handleHeartbeat } from './hive-http.mjs';
+import { handleBuzzPost, handleBuzzRead, handleHandoffPost, handleHeartbeat, handleHistoryPost } from './hive-http.mjs';
 import { networkInterfaces } from 'node:os';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -96,7 +96,7 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
       const body = url.pathname === '/api/status' ? monitor.status(hostStatus()) : monitor.tail(Number(url.searchParams.get('after')) || 0, Number(url.searchParams.get('limit')) || 100);
       return res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     }
-    if (handleHeartbeat(req, res, hive, key, serviceBuzz) || handleBuzzPost(req, res, hive, buzz, key) || handleHandoffPost(req, res, crew, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
+    if (handleHeartbeat(req, res, hive, key, serviceBuzz) || handleHistoryPost(req, res, hive, key) || handleBuzzPost(req, res, hive, buzz, key) || handleHandoffPost(req, res, crew, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
     if (req.method === 'POST' && req.url === '/api/claim' && roster) { // `hive join` asks for its place in its project's cast
       if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
       const chunks = [];

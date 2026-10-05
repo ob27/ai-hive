@@ -40,7 +40,7 @@ function filePathOf(item) {
   return null;
 }
 
-function toolAction(item) {
+export function toolAction(item) {
   const [tool, label] = TOOLS[item.toolId] ?? ['Bash', 'working'];
   const file = filePathOf(item);
   if (['Read', 'Write', 'Edit'].includes(tool)) return { type: 'pre', tool, input: { file_path: file ?? 'a file' } };
