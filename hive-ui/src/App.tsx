@@ -155,6 +155,7 @@ export function App() {
       ) : (
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           <main style={{ boxSizing: "border-box", flex: 1, minWidth: 0, height: "100%", overflowY: "auto", padding: "16px 32px 24px" }}>
+            {demo ? null : <BootedBar />}
             {members.find((m) => m.id === selectedId) ? (
               <div style={{ marginBottom: 12 }}>
                 <MemberDetails member={members.find((m) => m.id === selectedId)!} onClose={() => setSelectedId(null)} />
@@ -173,4 +174,3 @@ export function App() {
     </div>
   );
 }
-            {demo ? null : <BootedBar />}
