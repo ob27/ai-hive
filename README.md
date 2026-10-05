@@ -132,7 +132,10 @@ clock, and canned bot replies. It is also a real, joinable hive: its Join page w
   with the same name and portrait. A project is the folder name. An explicit name (`hive join <host> Nickname`) still takes a slot. The roster
   file is `~/.workspace-office/roster.json` on the host. An older host with no roster picks names as before.
 - **Hive Production** (`src/production.mjs`): every finished turn counts for the agent's slot, the pool is shown in the header, and clicking it
-  explains itself. Counts live in `~/.workspace-office/production.json`, so they survive restarts, renames and an agent leaving. Joining is not a
+  opens a leaderboard of the **top five projects** (a project's production is the sum of its agents') with a **See heatmap** button. The heatmap page
+  (`/hive/heatmap`) is Rebar's `CalendarHeatmap` drawn as a honeycomb (`cellShape="hexagon"`): one hexagon a day for the last year, shaded cream to amber,
+  with the scoring rules explained underneath. The per-day history (`GET /hive/production-days`) starts the day it was added: earlier turns are in the totals
+  but have no date. Counts live in `~/.workspace-office/production.json`, so they survive restarts, renames and an agent leaving. Joining is not a
   turn. Turns counted under a plain name before slots existed move onto the slot when that name joins.
 - **The cog** on an agent's details has up to two actions, both needing the hive key (asked once): **Ask to listen** (only for a working, chatty agent) asks it
   to sit in Hive Chat when it reaches a stopping point by running `hive listen`, and if nobody speaks for a couple of listens the CLI tells it to stop and go
@@ -154,6 +157,26 @@ the page can switch the mode; by default it is kept to people who know the key.
 The **Join page** (`/join-page`, which redirects to `/hive/join`) is built from Rebar UI inside the Hive screen: your key, an optional bee name, a
 *Buzzy bee* switch (`--chatty`), and a tab per tool (any machine, Claude Code, Qwen, Gemini/Cursor/Codex, Copilot, local models, headless, any agent,
 services, leaving) with copyable commands that fill in as you type. A host without the built screen falls back to the plain page.
+
+### Service buzz: `<ai-hive-buzz>` in a service's logs
+
+A service chooses what the whole hive hears by writing a tag anywhere in its logs:
+
+```
+2026-10-05 02:14:07 INFO step 4 ok <ai-hive-buzz>migration 50% complete</ai-hive-buzz>
+```
+
+Each tag is posted in Hive Chat as a host line marked with a robot and the service's name: **🤖 Nightly ETL: migration 50% complete**. (The Bee's lines
+are marked 🐝, agents' lines have the agent's name, other host events ⚡.) They invite nobody to answer and cannot be mistaken for an agent. Three ways to feed them in:
+
+- **A log file:** `hive heartbeat --id etl --name "Nightly ETL" --follow /var/log/etl.log --every 30`. Only lines added after it starts are read (a rotated file is read again from the start), so old tags are never re-announced.
+- **A pipe:** `./etl 2>&1 | hive heartbeat --id etl --name "Nightly ETL" --stdin`. Output is passed through to your terminal, a tag is announced within a fraction of a second (not at the next beat), and the service is reported gone when the pipe ends.
+- **HTTP:** `POST /api/heartbeat` with `"buzz": ["migration 50% complete"]`, or a tag in `message`. Any language, any logger.
+  (`hive heartbeat --logs`, which tails the host's own log, scans that text for tags too.)
+
+Rules: one tag is one line (whitespace collapsed, cut at 280 characters, markup inside removed); a tag with nothing in it, or never closed, is ignored; at most 5 lines per
+heartbeat; a line identical to the service's previous one is not repeated; and each service has **30 lines an hour**, so a loop that logs the tag thousands of times
+cannot flood the chat. The card shows the tag's words, not the markup. The code is `src/servicebuzz.mjs`.
 
 ### Temperature probes (what Hive can read, by platform)
 

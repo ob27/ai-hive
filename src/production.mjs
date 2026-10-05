@@ -7,23 +7,31 @@ import { dirname, join } from 'node:path';
 
 export const productionFile = () => join(process.env.HIVE_HOME ?? process.env.OFFICE_HOME ?? join(homedir(), '.workspace-office'), 'production.json');
 
+/** 'YYYY-MM-DD' in the host's local time zone: a day is the host's day. */
+export const localDay = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
 export class Ledger {
-  constructor({ file = productionFile(), saveMs = 2000 } = {}) {
+  constructor({ file = productionFile(), saveMs = 2000, now = Date.now } = {}) {
     this.file = file;
     this.saveMs = saveMs;
     this.turns = new Map();   // key -> turns. A key is a roster slot ('project#0'), or an agent's name for counts made before slots existed
     this.names = new Map();   // key -> the name last seen on it, for showing who is who
+    this.days = new Map();    // 'YYYY-MM-DD' (the host's local date) -> production made that day, for the heatmap. History starts the day this was added.
+    this.now = now;
     this.timer = null;
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
       for (const [key, n] of Object.entries(saved.turns ?? {})) if (typeof n === 'number' && n > 0) this.turns.set(key, n);
       for (const [key, name] of Object.entries(saved.names ?? {})) if (typeof name === 'string') this.names.set(key, name);
+      for (const [day, n] of Object.entries(saved.days ?? {})) if (/^\d{4}-\d{2}-\d{2}$/.test(day) && typeof n === 'number' && n > 0) this.days.set(day, n);
     } catch { /* first run, or an unreadable file: start from zero */ }
   }
 
   add(key, n = 1, name) {
     this.turns.set(key, Math.round(((this.turns.get(key) ?? 0) + n) * 100) / 100);
     if (name) this.names.set(key, name);
+    const day = localDay(this.now());
+    this.days.set(day, Math.round(((this.days.get(day) ?? 0) + n) * 100) / 100);
     this.timer ??= setTimeout(() => this.save(), this.saveMs);
     this.timer.unref?.();
   }
@@ -41,12 +49,24 @@ export class Ledger {
   total() { let t = 0; for (const n of this.turns.values()) t += n; return Math.round(t * 100) / 100; }
   top(limit = 10) { return [...this.turns].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([key, turns]) => ({ name: this.names.get(key) ?? key.replace(/#\d+$/, ''), turns })); }
 
+  /** Production per project, biggest first. A key is 'project#slot'; one counted by name before slots existed is its own entry. */
+  projects(limit = 5) {
+    const by = new Map();
+    for (const [key, n] of this.turns) { const p = key.replace(/#\d+$/, ''); by.set(p, (by.get(p) ?? 0) + n); }
+    return [...by].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, turns]) => ({ name, turns: Math.round(turns * 100) / 100 }));
+  }
+
+  /** The heatmap's data: [{ date, value }] oldest first, for the last `limit` days that have any production. */
+  daily(limit = 400) {
+    return [...this.days].sort((a, b) => a[0].localeCompare(b[0])).slice(-limit).map(([date, value]) => ({ date, value }));
+  }
+
   save() {
     clearTimeout(this.timer); this.timer = null;
     try {
       mkdirSync(dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ turns: Object.fromEntries(this.turns), names: Object.fromEntries(this.names) }));
+      writeFileSync(tmp, JSON.stringify({ turns: Object.fromEntries(this.turns), names: Object.fromEntries(this.names), days: Object.fromEntries([...this.days].sort((a, b) => a[0].localeCompare(b[0])).slice(-400)) }));
       renameSync(tmp, this.file);
     } catch { /* a read-only home: production just is not remembered */ }
   }

@@ -14,6 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { bootstrapScript, cliFiles, cliVersion } from './bootstrap.mjs';
+import { createServiceBuzz } from './servicebuzz.mjs';
 import { handleBuzzPost, handleBuzzRead, handleHandoffPost, handleHeartbeat } from './hive-http.mjs';
 import { networkInterfaces } from 'node:os';
 
@@ -63,6 +64,7 @@ const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), 
 const CARRIES_NOTICE = new Set(['PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Stop', 'AfterTool', 'BeforeAgent', 'AfterAgent']);
 
 export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [], onHook = async () => 200, monitor = null, hostStatus = () => ({}), roster = null, crew = null }) {
+  const serviceBuzz = buzz ? createServiceBuzz({ buzz }) : null; // <ai-hive-buzz> lines from services' logs (servicebuzz.mjs)
   // A seat whose CLI differs from this host's is told once an hour. Older CLIs report no version: they cannot be judged.
   let current = { at: 0, v: '' };
   const told = new Map();
@@ -94,7 +96,7 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
       const body = url.pathname === '/api/status' ? monitor.status(hostStatus()) : monitor.tail(Number(url.searchParams.get('after')) || 0, Number(url.searchParams.get('limit')) || 100);
       return res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     }
-    if (handleHeartbeat(req, res, hive, key) || handleBuzzPost(req, res, hive, buzz, key) || handleHandoffPost(req, res, crew, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
+    if (handleHeartbeat(req, res, hive, key, serviceBuzz) || handleBuzzPost(req, res, hive, buzz, key) || handleHandoffPost(req, res, crew, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
     if (req.method === 'POST' && req.url === '/api/claim' && roster) { // `hive join` asks for its place in its project's cast
       if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
       const chunks = [];

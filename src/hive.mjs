@@ -192,8 +192,14 @@ export class HiveStore {
     const sim = [...this.agents.values()].filter((a) => (a.sim || !this.ledger) && a.turns); // counted in memory (the demo's agents, or a store with no ledger)
     const real = this.ledger ? this.ledger.total() : 0;
     const agents = [...(this.ledger ? this.ledger.top(10) : []), ...sim.map((a) => ({ name: a.name, turns: a.turns }))].sort((x, y) => y.turns - x.turns).slice(0, 10);
-    return { total: Math.round((real + sim.reduce((t, a) => t + a.turns, 0)) * 100) / 100, agents };
+    const byProject = new Map((this.ledger ? this.ledger.projects(50) : []).map((p) => [p.name, p.turns]));
+    for (const a of sim) byProject.set(a.project ?? a.name, (byProject.get(a.project ?? a.name) ?? 0) + a.turns);
+    const projects = [...byProject].sort((x, y) => y[1] - x[1]).slice(0, 5).map(([name, turns]) => ({ name, turns: Math.round(turns * 100) / 100 }));
+    return { total: Math.round((real + sim.reduce((t, a) => t + a.turns, 0)) * 100) / 100, agents, projects };
   }
+
+  /** Production per day, for the heatmap page (real agents only: the demo's are never saved). */
+  productionDays() { return this.ledger ? this.ledger.daily() : []; }
 
   /** The host shows an agent the door: off the wall now, and its events are ignored until it rejoins. Returns the agent, or null. */
   boot(id) {

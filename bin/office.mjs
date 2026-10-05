@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { execSync, spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSeat, loadSeat, pidFile, releaseSession, removeSeat, seatForSession } from '../src/seat.mjs';
+import { createSeat, loadSeat, pidFile, rebindSession, releaseSession, removeSeat, seatForSession, windows } from '../src/seat.mjs';
 import { watchCopilot } from '../src/copilot.mjs';
 import { claimSeat, takePendingNotice, listenBuzz, listSeats, postBuzz, postHandoff, readBuzz, send } from '../src/transport.mjs';
 import { sessionStart, sessionEnd } from '../src/protocol.mjs';
@@ -17,7 +17,8 @@ import { startProxy } from '../src/proxy.mjs';
 import { defaultName } from '../src/names.mjs';
 import { cliDir, installCli, reportCommand } from '../src/install.mjs';
 import { sampleMachine } from '../src/machine-stats.mjs';
-import { logSummary, heartbeatBody, postHeartbeat } from '../src/heartbeat.mjs';
+import { logSummary, heartbeatBody, postHeartbeat, readNew, createBuzzScanner } from '../src/heartbeat.mjs';
+import { extractBuzz } from '../src/servicebuzz.mjs';
 import { render, runChecks } from '../src/doctor.mjs';
 import { openClaudeChat } from '../src/openchat.mjs';
 import { RESUME_MESSAGE, formatLine, gate, isStop, listenAtStop, listenWithCursor, noteListen, noticeOutput, writeCursor } from '../src/listenloop.mjs';
@@ -54,6 +55,7 @@ const HELP = `hive — join the AI Hive. (The older \`office\` command still wor
                                                               would, says what is wrong and what to do, and (with the key) asks the host
                                                               how it is doing. Works against old hosts too. Exit 1 if anything fails.
   hive logs [--url …] [--key K] [--follow] [--limit 100]      the host's recent requests, errors and console output (needs a current host)
+  hive rebind <seat> --session <id>                         put a chat whose agent vanished back on its seat (no args: list the windows)
   hive leave                                                stand up
   hive install                                              put office on your PATH (join does this for you)
   hive update [--seat <name>]                               fetch the host's current CLI (your hooks run the copy under ~/.workspace-office/cli, which
@@ -253,13 +255,17 @@ switch (cmd) {
   }
   case 'heartbeat': {
     const id = flag('id');
-    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value] [--temp-command "<cmd>"] [--gpu-command "<cmd>"] [--net-command "<cmd>"]');
+    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value] [--temp-command "<cmd>"] [--gpu-command "<cmd>"] [--net-command "<cmd>"] [--follow <logfile>] [--stdin]');
     const gpuCommand = flag('gpu-command'); // any command that prints the GPU busy percent (the average, if there are several)
     const netCommand = flag('net-command'); // any command that prints network throughput in Mbit/s
     const tempCommand = flag('temp-command'); // any command that prints a temperature in °C: your own sensor probe
     const withMetrics = bool('metrics'); // stream this machine's cpu / memory / load / disk / temperature with each heartbeat
     const fixed = {}; // --metric temp=61 (repeatable): a reading the machine cannot give by itself
     for (let m; (m = flag('metric')) !== undefined;) { const [k, v] = String(m).split('='); if (k && Number.isFinite(Number(v))) fixed[k] = Number(v); }
+    const followFile = flag('follow'); // a log file to watch for <ai-hive-buzz>…</ai-hive-buzz>: each tag is posted in Hive Chat
+    const fromStdin = bool('stdin');   // the service's output piped in:  ./service 2>&1 | hive heartbeat --id svc --stdin   (passed through to stdout)
+    const scanner = createBuzzScanner(), stdinScanner = createBuzzScanner();
+    let followAt = -1, pending = [];   // -1: start at the end of the file, so old log lines are not announced again
     const logs = bool('logs'); // the message is the host's own log tail (the host's Hive Web App heartbeat)
     const fields = { id, name: flag('name'), project: flag('project'), status: flag('status'), message: flag('message'), ttl: flag('ttl') };
     const every = flag('every');
@@ -274,21 +280,38 @@ switch (cmd) {
           const res = await fetch(`${url}/api/logs?after=${logAfter}&limit=100`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(3000) });
           const entries = res.ok ? await res.json() : [];
           if (entries.length) logAfter = entries.at(-1).id;
+          pending.push(...extractBuzz(entries.map((e) => e.text).join('\n'))); // tags in the host's own logs too
           const s = logSummary(entries, lastLine);
           lastLine = s.last; extra = { status: s.status, message: s.message, ...extra };
         } catch { /* the host will not answer a heartbeat either: that failure is reported below */ }
       }
+      if (followFile && extra.status !== 'gone') {
+        if (followAt < 0) { try { followAt = statSync(followFile).size; } catch { followAt = 0; } }
+        const got = readNew(followFile, followAt);
+        followAt = got.offset;
+        pending.push(...scanner.push(got.text));
+      }
+      const buzz = pending.splice(0).slice(0, 5);
       const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine({ tempCommand, gpuCommand, netCommand }) : {}), ...fixed } : undefined;
-      const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra, metrics }));
+      const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra, metrics, buzz }));
       if (!r.ok) console.error(`hive: heartbeat failed: ${r.error}`);
       return r.ok;
     };
-    if (!every) process.exit((await beat()) ? 0 : 1);
-    const secs = Number(every);
+    if (!every && !fromStdin) process.exit((await beat()) ? 0 : 1);
+    const secs = Number(every ?? 30);
     if (!(secs >= 1)) die('--every needs a number of seconds');
     if (fields.ttl === undefined) fields.ttl = String(Math.max(5, Math.ceil(secs * 3))); // tolerate two missed beats
     await beat();
     const timer = setInterval(beat, secs * 1000);
+    if (fromStdin) {
+      let soon = null;
+      process.stdin.on('data', (chunk) => {
+        process.stdout.write(chunk);
+        const found = stdinScanner.push(chunk);
+        if (found.length) { pending.push(...found); clearTimeout(soon); soon = setTimeout(() => beat(), 150); } // announce promptly, not at the next beat
+      });
+      process.stdin.on('end', async () => { clearInterval(timer); await beat({ status: 'gone' }); process.exit(0); }); // the service ended: say so
+    }
     const stop = async () => { clearInterval(timer); await beat({ status: 'gone' }); process.exit(0); };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
@@ -363,6 +386,18 @@ switch (cmd) {
     };
     await fetchLogs();
     while (follow) { await new Promise((r) => setTimeout(r, 1000)); await fetchLogs(); }
+    break;
+  }
+  case 'rebind': {
+    // A chat is still going but its agent is gone from the wall (or it is speaking as another seat): put it back on its seat.
+    const [name] = rest, sid = flag('session');
+    if (!name || !sid) {
+      console.log('usage: hive rebind <seat> --session <id>\n\nWindows the hive knows (newest first):');
+      for (const w of windows()) console.log(`  ${w.sid}  ${w.seat}  ${Math.round((Date.now() - w.at) / 60000)} min ago`);
+      process.exit(name || sid ? 1 : 0);
+    }
+    try { rebindSession(sid, name); } catch { die(`no seat called ${name}`); }
+    console.log(`That window now speaks as ${name}; it shows on the wall from its next action.`);
     break;
   }
   case 'leave': {

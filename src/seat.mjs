@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -59,8 +59,8 @@ function bindings() {
 }
 
 /** The seat this window (session id) speaks as: the one it is already bound to, else a free seat of this folder's project
- *  (the one named in the hook command if it is free), else that named seat shared. Two windows starting at the same instant can
- *  both see one seat free, so after claiming it the claim is checked: of two windows on one seat the earlier binding keeps it. */
+ *  (the one named in the hook command if it is free), else that named seat shared. Two windows starting at the same instant can both
+ *  see one seat free, so a seat is taken by creating its claim file exclusively: only one window can create it. */
 export function seatForSession(sid, project, preferred) {
   const seatNames = () => { try { return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)); } catch { return []; } };
   const load = (n) => { try { return JSON.parse(readFileSync(file(n), 'utf8')); } catch { return null; } };
@@ -68,32 +68,63 @@ export function seatForSession(sid, project, preferred) {
   const bound = mine && load(mine.seat);
   if (bound) { writeBinding(sid, bound.name); return bound; }
   const fallback = load(preferred ?? '') ?? loadSeat(preferred);
-  const lost = new Set(); // seats another window beat us to
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const lost = new Set(); // seats another window claimed first
+  for (let attempt = 0; attempt < 6; attempt++) {
     const taken = new Set([...bindings().filter((b) => b.sid !== sid).map((b) => b.seat), ...lost]);
-    const free = [preferred, ...seatNames()].map((n) => n && load(n)).filter((s) => s && s.project === fallback.project && s.hooks?.includes('claude') && !taken.has(s.name));
-    const seat = free[0];
+    const seat = [preferred, ...seatNames()].map((n) => n && load(n)).filter((s) => s && s.project === fallback.project && s.hooks?.includes('claude') && !taken.has(s.name))[0];
     if (!seat) break;
     if (!sid) return seat;
-    const at = writeBinding(sid, seat.name);
-    const rival = bindings().find((b) => b.sid !== sid && b.seat === seat.name && (b.at < at || (b.at === at && b.sid < sid)));
-    if (!rival) return seat;
-    rmSync(bindFile(sid), { force: true }); // it was theirs first: look again without it
+    if (claim(seat.name, sid)) { writeBinding(sid, seat.name); return seat; }
     lost.add(seat.name);
   }
   if (sid) writeBinding(sid, fallback.name); // no free seat: share the named one
   return fallback;
 }
 
+const claimFile = (seat) => join(bindDir, `${String(seat).replace(/[^\w.-]/g, '_')}.claim`);
+
+/** Try to be the one window on `seat`. Creating the file exclusively is atomic, so of two windows exactly one succeeds. A claim whose window has no
+ *  binding (it closed, or crashed before binding) is stale and is taken over; a very fresh one is a window about to bind. */
+function claim(seat, sid) {
+  mkdirSync(bindDir, { recursive: true });
+  for (let tries = 0; tries < 3; tries++) {
+    try { writeFileSync(claimFile(seat), JSON.stringify({ sid, at: Date.now() }), { flag: 'wx' }); return true; } catch (err) { if (err.code !== 'EEXIST') return false; }
+    let owner = null;
+    try { owner = JSON.parse(readFileSync(claimFile(seat), 'utf8')); } catch { /* being written by the winner: try again */ }
+    if (owner?.sid === sid) return true;
+    const alive = owner && (bindings().some((b) => b.sid === owner.sid) || Date.now() - owner.at < 5000);
+    if (alive || !owner) { if (!owner) continue; return false; }
+    rmSync(claimFile(seat), { force: true }); // stale: its window is gone
+  }
+  return false;
+}
+
 function writeBinding(sid, seat) {
   mkdirSync(bindDir, { recursive: true });
   const at = Date.now();
-  writeFileSync(bindFile(sid), JSON.stringify({ sid, seat, at }));
+  const tmp = `${bindFile(sid)}.${process.pid}.tmp`; // written whole, then moved into place: a window reading at the same moment never sees half a file
+  writeFileSync(tmp, JSON.stringify({ sid, seat, at }));
+  renameSync(tmp, bindFile(sid));
   return at;
+}
+
+/** The windows (session ids) currently bound to a seat, newest first: what `hive rebind` offers to choose from. */
+export function windows() {
+  return bindings().sort((a, b) => b.at - a.at);
+}
+
+/** Puts a window (session id) back on a seat of its own choosing, e.g. when its agent vanished from the wall and the window
+ *  was given another seat. Its next event reports as that seat again. */
+export function rebindSession(sid, seatName) {
+  loadSeat(seatName); // throws if there is no such seat
+  writeBinding(sid, seatName);
 }
 
 /** A window closed. True when its seat is now empty (no other window speaks as it), so the seat may leave. */
 export function releaseSession(sid, seatName) {
-  if (sid) rmSync(bindFile(sid), { force: true });
+  if (sid) {
+    rmSync(bindFile(sid), { force: true });
+    try { for (const f of readdirSync(bindDir).filter((n) => n.endsWith('.claim'))) if (JSON.parse(readFileSync(join(bindDir, f), 'utf8')).sid === sid) rmSync(join(bindDir, f), { force: true }); } catch { /* none */ }
+  }
   return !bindings().some((b) => b.seat === seatName);
 }

@@ -7,6 +7,7 @@ import { ProductionInfo } from "./ProductionInfo";
 import { ChatBox } from "./ChatBox";
 import { ConfigPage } from "./ConfigPage";
 import { JoinPage } from "./JoinPage";
+import { HeatmapPage } from "./HeatmapPage";
 import { MemberDetails } from "./MemberDetails";
 import { useBuzz } from "./buzz";
 import type { BuzzMessage } from "./buzz";
@@ -23,6 +24,7 @@ const BASE = import.meta.env.BASE_URL;
 const path = window.location.pathname.replace(/\/+$/, "");
 const onConfigRoute = path.endsWith("/config");
 const onJoinRoute = path.endsWith("/join");
+const onHeatmapRoute = path.endsWith("/heatmap");
 
 function applyTheme(theme: HiveConfig["theme"]) {
   const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme === "dark";
@@ -40,7 +42,7 @@ export function App() {
   const [saved, setSaved] = useState(readConfig);                       // what the Config page edits
   const cfg = onConfigRoute ? saved : withQuery(saved, q);              // what the wall shows: saved, plus address-bar overrides
   const { members, live } = useHive(demo);
-  const { total: production, agents: topAgents } = useProduction(demo, members);
+  const { total: production, projects: topProjects } = useProduction(demo, members);
   const { messages, send, info } = useBuzz(demo);
   const [replyTo, setReplyTo] = useState<BuzzMessage | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export function App() {
         { href: `${BASE}config`, label: "Config" },
         { href: `${BASE}join`, label: "Join this Hive" },
       ],
-      trailing: { kind: "text", text: onConfigRoute ? "Config" : onJoinRoute ? "Join" : demo || hostMode === "demo" ? "● Demo" : live ? "● Live" : "● Reconnecting…" },
+      trailing: { kind: "text", text: onConfigRoute ? "Config" : onJoinRoute ? "Join" : onHeatmapRoute ? "Heatmap" : demo || hostMode === "demo" ? "● Demo" : live ? "● Live" : "● Reconnecting…" },
       themeToggle: { sections: ["mode"], hideLabel: true },
       ariaLabel: "AI Hive",
     },
@@ -113,13 +115,17 @@ export function App() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--rebar-color-bg-primary, #fff)" }}>
       <div ref={navRef} className="hive-nav" style={{ flex: "none", position: "relative" }}>
         <BlockRenderer key={themeTick} blocks={nav} />
-        {production !== null && !onConfigRoute && !onJoinRoute ? (
+        {production !== null && !onConfigRoute && !onJoinRoute && !onHeatmapRoute ? (
           <div style={{ position: "absolute", right: 150, top: 0, bottom: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 3 }}>
-            <ProductionInfo total={production} agents={topAgents} />
+            <ProductionInfo total={production} projects={topProjects} />
           </div>
         ) : null}
       </div>
-      {onJoinRoute ? (
+      {onHeatmapRoute ? (
+        <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 32px" }}>
+          <HeatmapPage demo={demo} />
+        </main>
+      ) : onJoinRoute ? (
         <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 32px" }}>
           <JoinPage />
         </main>

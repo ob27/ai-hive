@@ -28,7 +28,8 @@ export function BuzzThread({ messages, onReply }: { messages: BuzzMessage[]; onR
     if (m.handoffAlert) return { id, role: "system", timestamp, content: `📝 ${m.text}`, actions: <HandoffNotes m={m} /> };
     if (m.kind === "system") {
       const bee = m.from.startsWith("🐝");
-      return { id, role: "system", timestamp, content: `${bee ? "🐝 Bee: " : m.handoff ? "" : "⚡ "}${m.text}`, actions: reply(m, `Reply to the event: ${m.text}`) };
+      const robot = m.from.startsWith("🤖"); // a service speaking through <ai-hive-buzz> in its logs: "🤖 Billing: 50% complete"
+      return { id, role: "system", timestamp, content: `${bee ? "🐝 Bee: " : robot ? `${m.from}: ` : m.handoff ? "" : "⚡ "}${m.text}`, actions: reply(m, `Reply to the event: ${m.text}`) };
     }
     return {
       id,

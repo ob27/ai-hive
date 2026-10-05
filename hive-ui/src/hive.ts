@@ -35,11 +35,12 @@ export type HiveMember = Omit<AgentWallMember, "status"> & { metrics?: HiveMetri
 const BASE = import.meta.env.BASE_URL; // "/hive/"
 
 /** The Hive's pooled turn count (GET /hive/production). Fetched on load, every 5s and whenever the member list changes; failures are ignored. `demo` fakes one that creeps upwards. */
-export type Production = { total: number | null; agents: { name: string; turns: number }[] };
+export type Production = { total: number | null; agents: { name: string; turns: number }[]; projects: { name: string; turns: number }[] };
 
 export function useProduction(demo: boolean, members: HiveMember[]): Production {
   const [total, setTotal] = useState<number | null>(null);
   const [agents, setAgents] = useState<Production["agents"]>([]);
+  const [projects, setProjects] = useState<Production["projects"]>([]);
   const roster = members.map((m) => m.id).join("|");
   useEffect(() => {
     if (demo) return;
@@ -47,7 +48,7 @@ export function useProduction(demo: boolean, members: HiveMember[]): Production 
     const load = () =>
       fetch(`${BASE}production`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((j: { total?: number; agents?: Production["agents"] } | null) => { if (!dead && typeof j?.total === "number") { setTotal(j.total); setAgents(Array.isArray(j.agents) ? j.agents : []); } })
+        .then((j: { total?: number; agents?: Production["agents"]; projects?: Production["projects"] } | null) => { if (!dead && typeof j?.total === "number") { setTotal(j.total); setAgents(Array.isArray(j.agents) ? j.agents : []); setProjects(Array.isArray(j.projects) ? j.projects : []); } })
         .catch(() => undefined);
     load();
     const id = setInterval(load, 5000);
@@ -61,7 +62,10 @@ export function useProduction(demo: boolean, members: HiveMember[]): Production 
   }, [demo]);
   // The demo has no host to ask, so its top contributors are whoever on the fake wall has taken the most turns.
   const topDemo = demo ? members.filter((m) => m.kind === "agent" && m.turns).sort((a, b) => (b.turns ?? 0) - (a.turns ?? 0)).slice(0, 5).map((m) => ({ name: m.name, turns: m.turns ?? 0 })) : agents;
-  return { total, agents: topDemo };
+  const topProjects = demo
+    ? [...members.filter((m) => m.kind === "agent" && m.turns).reduce((by, m) => by.set(m.project ?? m.name, (by.get(m.project ?? m.name) ?? 0) + (m.turns ?? 0)), new Map<string, number>())].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, turns]) => ({ name, turns }))
+    : projects;
+  return { total, agents: topDemo, projects: topProjects };
 }
 
 /**

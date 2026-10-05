@@ -35,7 +35,7 @@ test('two windows that start at the same instant never end up speaking as the sa
     const c = spawn(process.execPath, ['-e', `const { seatForSession } = await import(${JSON.stringify(seatMod)}); console.log(seatForSession(${JSON.stringify(sid)}, 'p', 'Ann').name);`, '--input-type=module'], { env: { ...process.env, HIVE_HOME: home } });
     let out = ''; c.stdout.on('data', (d) => { out += d; }); c.on('close', () => resolve(out.trim()));
   });
-  for (let round = 0; round < 12; round++) {
+  for (let round = 0; round < 25; round++) {
     const home = mkdtempSync(join(tmpdir(), 'hive-race-'));
     process.env.HIVE_HOME = home;
     const { createSeat: make } = await import(`../src/seat.mjs?round=${round}`);

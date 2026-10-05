@@ -1,3 +1,5 @@
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { extractBuzz } from './servicebuzz.mjs';
 // `office heartbeat`: a service tells the Hive it is alive (or in trouble). Same shared key as seats.
 // Never throws into the caller: a down Hive must not break the service reporting to it.
 export async function postHeartbeat(url, key, body) {
@@ -19,13 +21,14 @@ export async function postHeartbeat(url, key, body) {
 }
 
 /** The request body for the CLI's flags. */
-export function heartbeatBody({ id, name, project, status, message, ttl, metrics }) {
+export function heartbeatBody({ id, name, project, status, message, ttl, metrics, buzz }) {
   const body = { id, status: status ?? 'ok' };
   if (name) body.name = name;
   if (project) body.project = project;
   if (message) body.message = message;
   if (ttl !== undefined) body.ttlSec = Number(ttl);
   if (metrics && Object.keys(metrics).length) body.metrics = metrics;
+  if (buzz?.length) body.buzz = buzz;
   return body;
 }
 
@@ -47,4 +50,38 @@ export function logSummary(entries, last = null, now = Date.now()) {
   if (!latest) return { status: 'ok', message: 'running, no activity yet', last: null };
   const fresh = meaningful.length > 0;
   return { status: 'ok', message: clip(`${hhmmss(latest.at)} ${latest.text}${fresh ? '' : ` (${ago(now - latest.at)} ago)`}`), last: latest };
+}
+
+// --- `hive heartbeat --follow <file>` / `--stdin`: the service's own logs, scanned for <ai-hive-buzz> (servicebuzz.mjs) ------------------------------
+/** Reads what a log file gained since `offset`. A file that shrank (rotated) is read again from the start. -> { text, offset } */
+export function readNew(file, offset) {
+  let size;
+  try { size = statSync(file).size; } catch { return { text: '', offset }; }
+  if (size < offset) offset = 0;
+  if (size === offset) return { text: '', offset };
+  const fd = openSync(file, 'r');
+  try {
+    const len = Math.min(size - offset, 1_000_000); // a huge burst is read a megabyte per beat
+    const buf = Buffer.alloc(len);
+    readSync(fd, buf, 0, len, offset);
+    return { text: buf.toString('utf8'), offset: offset + len };
+  } finally { closeSync(fd); }
+}
+
+/** Collects log text as it arrives (a file's new bytes, or stdin chunks) and hands back the complete tags in it. A tag cut in half by a chunk
+ *  boundary is kept until its closing tag arrives. */
+export function createBuzzScanner() {
+  let carry = '';
+  return {
+    /** -> the lines found in this chunk (and any tag it completed). */
+    push(chunk) {
+      const text = carry + String(chunk);
+      const open = text.lastIndexOf('<ai-hive-buzz>');
+      const close = text.lastIndexOf('</ai-hive-buzz>');
+      const cut = open > close ? open : text.length; // an opened but unclosed tag waits for the next chunk (up to 4 KB, then it is dropped)
+      carry = open > close ? text.slice(open).slice(-4096) : '';
+      if (open > close && text.length - open > 4096) carry = '';
+      return extractBuzz(text.slice(0, cut));
+    },
+  };
 }

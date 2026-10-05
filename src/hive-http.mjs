@@ -10,6 +10,7 @@
 //   GET  /hive/...        the built Hive screen (hive-ui/dist), SPA-style
 import { NOBODY_MESSAGE } from './chat.mjs';
 import { METRICS } from './service-rules.mjs';
+import { buzzFromHeartbeat } from './servicebuzz.mjs';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import { extname, join, normalize, sep } from 'node:path';
@@ -43,7 +44,8 @@ export function parseHeartbeat(body) {
     if (v === undefined || v === null || v === '') return required ? new Error(`${k} is required`) : undefined;
     return typeof v === 'string' && v.length <= max ? v : new Error(`${k} must be a string of at most ${max} characters`);
   };
-  const id = text('id', 100, true), name = text('name', 100), project = text('project', 100), message = text('message', 200);
+  const id = text('id', 100, true), name = text('name', 100), project = text('project', 100);
+  let message = text('message', 200);
   for (const v of [id, name, project, message]) if (v instanceof Error) return { error: v.message };
   const status = body.status ?? 'ok';
   if (!STATUSES.has(status)) return { error: `status must be one of ${[...STATUSES].join(', ')}` };
@@ -66,11 +68,15 @@ export function parseHeartbeat(body) {
     }
     if (!Object.keys(metrics).length) metrics = undefined;
   }
-  return { value: { id, name, project, status, message, ttlSec, ...(metrics ? { metrics } : {}) } };
+  if (body.buzz !== undefined && (!Array.isArray(body.buzz) || body.buzz.some((l) => typeof l !== 'string'))) return { error: 'buzz must be an array of strings' };
+  if (body.logs !== undefined && typeof body.logs !== 'string') return { error: 'logs must be a string' };
+  const buzz = buzzFromHeartbeat({ ...body, message });
+  if (typeof message === 'string') message = message.replace(/<\/?ai-hive-buzz>/gi, '').replace(/\s+/g, ' ').trim(); // the card shows the words, not the markup
+  return { value: { id, name, project, status, message, ttlSec, ...(metrics ? { metrics } : {}) }, buzz };
 }
 
 /** POST /api/heartbeat. Returns true when it handled the request. */
-export function handleHeartbeat(req, res, store, key) {
+export function handleHeartbeat(req, res, store, key, serviceBuzz = null) {
   if (req.method !== 'POST' || req.url.split('?')[0] !== '/api/heartbeat') return false;
   if (!same(req.headers.authorization ?? '', `Bearer ${key}`)) { res.writeHead(401).end('unauthorized'); return true; }
   const chunks = [];
@@ -84,9 +90,10 @@ export function handleHeartbeat(req, res, store, key) {
     if (res.writableEnded) return;
     let body;
     try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { return json(res, 400, { error: 'body is not valid JSON' }); }
-    const { value, error } = parseHeartbeat(body);
+    const { value, error, buzz } = parseHeartbeat(body);
     if (error) return json(res, 400, { error });
     store.heartbeat(value);
+    if (serviceBuzz && buzz?.length) serviceBuzz(value.id, value.name ?? value.id, buzz); // what the service chose to tell the hive
     res.writeHead(204).end();
   });
   return true;
@@ -256,6 +263,7 @@ export function handleHiveRead(req, res, store, uiDir, buzz = null, info = {}) {
   if (path === '/hive/state') { json(res, 200, store.snapshot()); return true; }
   if (path === '/hive/stream') { sse(req, res, store); return true; }
   if (path === '/hive/production') { json(res, 200, store.production()); return true; }
+  if (path === '/hive/production-days') { json(res, 200, store.productionDays()); return true; }
   if (path === '/hive/info') { const { join, ...publicInfo } = info; json(res, 200, publicInfo); return true; }
   if (path === '/hive/join-info') { json(res, 200, info.join ?? { ingest: null, key: null }); return true; }
   if (buzz && path === '/hive/buzz') { json(res, 200, buzz.list(100)); return true; }
