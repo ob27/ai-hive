@@ -40,7 +40,8 @@ export function BuzzThread({ messages, onReply }: { messages: BuzzMessage[]; onR
           {messages.map((m) =>
             m.kind === "system" ? (
               <li key={m.id} style={{ fontSize: 13, fontStyle: "italic", color: muted }}>
-                <span aria-hidden="true">⚡ </span>
+                <span aria-hidden="true">{m.from.startsWith("🐝") ? "🐝 " : "⚡ "}</span>
+                {m.from.startsWith("🐝") ? <strong style={{ fontStyle: "normal" }}>Bee: </strong> : null}
                 {m.text}
                 {onReply ? (
                   <button type="button" onClick={() => onReply(m)} aria-label={`Reply to the event: ${m.text}`} style={{ marginLeft: 8, padding: 0, border: 0, background: "none", color: "inherit", font: "inherit", cursor: "pointer", textDecoration: "underline" }}>

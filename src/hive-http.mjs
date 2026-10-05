@@ -173,9 +173,11 @@ export function handleBuzzRead(req, res, buzz, key) {
   if (q.has('after')) { // long-poll: lines after an id that the asker did not write, waiting up to `wait` seconds for one
     const wait = Math.min(Math.max(Number(q.get('wait')) || 0, 0), 110) * 1000;
     const ctl = { gone: false };
+    const left = new AbortController();
     req.on('close', () => { ctl.gone = true; });
+    res.on('close', () => left.abort()); // a listener that disconnects stops counting as waiting in the chat at once
     res.setHeader('x-hive-epoch', buzz.epoch);
-    buzz.waitFor(Number(q.get('after')) || 0, q.get('as') ?? '', wait).then((lines) => { if (!ctl.gone) json(res, 200, lines); });
+    buzz.waitFor(Number(q.get('after')) || 0, q.get('as') ?? '', wait, left.signal).then((lines) => { if (!ctl.gone) json(res, 200, lines); });
     return true;
   }
   res.setHeader('x-hive-epoch', buzz.epoch);

@@ -37,8 +37,9 @@ export class BuzzLog {
    * `limitKey` is who a human line is rate-limited as (a client address).
    * `replyTo` is the id of the line this one answers; the message carries a snapshot of it (`quote`) so the screen can show it
    * quoted, and the quote survives the original scrolling out of the thread. An unknown id is ignored.
+   * `invitees` (host lines only, kind 'system') names who may answer, overriding the usual choice (the Bee's conversation starters, bee.mjs).
    */
-  post({ from, kind = 'agent', text, via, limitKey, replyTo }) {
+  post({ from, kind = 'agent', text, via, limitKey, replyTo, invitees }) {
     const body = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
     if (!from) return { ok: false, status: 400, error: 'from is required' };
     if (!body) return { ok: false, status: 400, error: 'text is required' };
@@ -62,7 +63,7 @@ export class BuzzLog {
       if (repliesTo(this.messages, target.id).length >= this.cfg.maxReplies) return { ok: false, status: 409, error: `#${target.id} has already been answered: stay quiet` };
     }
     const quote = target ? { id: target.id, from: target.from, kind: target.kind, text: target.text.length > 140 ? `${target.text.slice(0, 139)}…` : target.text } : undefined;
-    const invited = this.invite && !via ? this.invite({ from, kind, text: body, replyTo: target?.id }, this.messages) : undefined;
+    const invited = kind === 'system' && Array.isArray(invitees) ? (invitees.length ? invitees : undefined) : this.invite && !via ? this.invite({ from, kind, text: body, replyTo: target?.id }, this.messages) : undefined;
     const message = { id: this.nextId++, at: now, from, kind, text: body, ...(via ? { via } : {}), ...(quote ? { quote } : {}), ...(invited ? { invited } : {}) };
     this.messages.push(message);
     if (this.messages.length > this.cfg.keep) this.messages.splice(0, this.messages.length - this.cfg.keep);
@@ -88,7 +89,7 @@ export class BuzzLog {
    */
   isWaiting(name) { return (this.waiting.get(name) ?? 0) > 0; }
 
-  waitFor(afterId, name, waitMs) {
+  waitFor(afterId, name, waitMs, signal) {
     const later = { at: Infinity }; // when a staggered line becomes ours, so the wait wakes then and not only on a new line
     const fresh = () => {
       later.at = Infinity;
@@ -126,6 +127,7 @@ export class BuzzLog {
         }
       };
       off = this.subscribe(check);
+      signal?.addEventListener('abort', () => done([]), { once: true }); // the listener went away (killed, network dropped): it is no longer in the chat
       check();
     });
   }

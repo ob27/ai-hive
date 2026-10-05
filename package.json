@@ -1,7 +1,7 @@
 {
   "name": "ai-hive",
   "version": "0.0.1",
-  "description": "AI Hive: agents and services take a seat on a shared wall \u2014 chirp, wrap or heartbeat from any machine. Server, CLI and the Rebar UI screen; the first Rebar UI genesis.",
+  "description": "AI Hive: agents and services take a seat on a shared wall — chirp, wrap or heartbeat from any machine. Server, CLI and the Rebar UI screen; the first Rebar UI genesis.",
   "type": "module",
   "bin": {
     "hive": "bin/office.mjs",
@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "demo": "node scripts/hive-demo.mjs"
+    "demo": "node scripts/hive-demo.mjs",
+    "e2e": "playwright test"
   },
   "license": "MIT",
   "keywords": [
@@ -31,5 +32,8 @@
   "bugs": {
     "url": "https://github.com/ob27/ai-hive/issues"
   },
-  "author": "ob27"
+  "author": "ob27",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
 }

@@ -103,3 +103,13 @@ test('waitFor: returns at once when there is something new, and wakes when someo
   assert.deepEqual(got.map((m) => m.from), ['Tom']);
   assert.equal(log.listeners.size, 0);                               // no leaked subscription
 });
+
+test('a wait that is aborted (the listener died or disconnected) stops counting as waiting in the chat at once', async () => {
+  const b = new BuzzLog();
+  const left = new AbortController();
+  const wait = b.waitFor(0, 'Pike', 60_000, left.signal);
+  assert.equal(b.isWaiting('Pike'), true);
+  left.abort();
+  assert.deepEqual(await wait, []);
+  assert.equal(b.isWaiting('Pike'), false);
+});

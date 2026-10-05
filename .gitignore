@@ -8,3 +8,5 @@ node_modules/
 .cursor/
 # The built screen: build it yourself (see README, "Build the screen")
 hive-ui/dist/
+test-results/
+playwright-report/
