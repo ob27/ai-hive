@@ -39,9 +39,9 @@ export function cleanReply(text, name) {
 }
 
 /** An Anthropic Messages API caller using plain fetch (this CLI has no dependencies). -> async ({ system, user, maxTokens }) => { text, outputTokens } */
-export function anthropicComplete({ apiKey, model = 'claude-haiku-4-5-20251001', fetchFn = fetch }) {
+export function anthropicComplete({ apiKey, model = 'claude-haiku-4-5-20251001', fetchFn = fetch, url = 'https://api.anthropic.com/v1/messages' }) {
   return async ({ system, user, maxTokens }) => {
-    const res = await fetchFn('https://api.anthropic.com/v1/messages', {
+    const res = await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),

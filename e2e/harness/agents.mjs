@@ -10,10 +10,10 @@ import { join } from 'node:path';
 import { runCli, sleep, spawnCli } from './hive.mjs';
 
 class Base {
-  constructor(hive, name, { chatty = false } = {}) { this.hive = hive; this.name = name; this.chatty = chatty; this.dir = hive.project(name); this.sid = `${name}-session`; }
+  constructor(hive, name, { chatty = false, project } = {}) { this.hive = hive; this.name = name; this.chatty = chatty; this.dir = hive.project(project ?? name); this.sid = `${name}-session`; }
   cli(args, opts = {}) { return runCli(this.hive, args, { cwd: this.dir, ...opts }); }
   joinArgs(flag) { return ['join', this.hive.ingest, this.name, '--key', this.hive.key, ...(this.chatty ? ['--chatty'] : []), ...(flag ? [flag] : [])]; }
-  async join() { const r = await this.cli(this.joinArgs(this.flag)); if (r.code !== 0) throw new Error(`${this.tool} join failed: ${r.stdout}${r.stderr}`); return this; }
+  async join() { this.hive.tracked.push(this); const r = await this.cli(this.joinArgs(this.flag)); if (r.code !== 0) throw new Error(`${this.tool} join failed: ${r.stdout}${r.stderr}`); return this; }
   async leave() { return this.cli(['leave', '--seat', this.name]); }
 }
 
@@ -30,6 +30,10 @@ export class ClaudeAgent extends Base {
   subagentStart(id, type = 'Explore') { return this.hook('SubagentStart', { agent_id: id, agent_type: type }); }
   subagentStop(id, type = 'Explore') { return this.hook('SubagentStop', { agent_id: id, agent_type: type }); }
   subagentTool(id, file = 'b.js') { return this.hook('PreToolUse', { tool_name: 'Read', tool_input: { file_path: file }, agent_id: id, agent_type: 'Explore' }); }
+  /** What a chatty agent does with a line it was asked: `hive buzz [--reply <id>] "<line>"`. Resolves { code, stdout, stderr }. */
+  buzz(text, replyTo) { return this.cli(['buzz', ...(replyTo ? ['--reply', String(replyTo)] : []), text, '--seat', this.name]); }
+  read() { return this.cli(['buzz', '--read', '--seat', this.name]); }
+  handoff(text) { return this.cli(['handoff', text, '--seat', this.name]); }
   /** The end-of-turn hook, left waiting in the chat. Resolves with what it handed back (a continuation) once someone speaks. */
   stopListening(wait = 10) { return this.hook('Stop', {}, { HIVE_LISTEN_WAIT: String(wait) }); }
   /** `hive listen` as a tool in the middle of a turn. Returns { child, done } so the test can kill it. */
@@ -73,6 +77,7 @@ export class CopilotAgent extends Base {
     writeFileSync(this.file, JSON.stringify({ kind: 0, v: { requests: [] } }) + '\n');
   }
   async join() { // the watcher is started by join and inherits this environment
+    this.hive.tracked.push(this);
     const r = await this.cli(this.joinArgs(this.flag), { env: { OFFICE_VSCODE_USER_DIR: this.userDir } });
     if (r.code !== 0) throw new Error(`copilot join failed: ${r.stdout}${r.stderr}`);
     await sleep(1800); // the watcher starts reading from the end of the file
@@ -89,7 +94,7 @@ export class CopilotAgent extends Base {
 export class ApiAgent extends Base {
   tool = 'api'; activity = /crawling the site/;
   async post(body) { return fetch(`http://${this.hive.ingest}/api/hooks/claude`, { method: 'POST', headers: { authorization: `Bearer ${this.hive.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ session_id: this.sid, cwd: `/office/${this.name}`, ...body }) }); }
-  async join() { await this.post({ hook_event_name: 'SessionStart', hive: { project: 'api-proj', chatty: this.chatty, hooks: ['custom'] } }); return this; }
+  async join() { this.hive.tracked.push(this); await this.post({ hook_event_name: 'SessionStart', hive: { project: 'api-proj', chatty: this.chatty, hooks: ['custom'] } }); return this; }
   async prompt() { return this.post({ hook_event_name: 'UserPromptSubmit' }); }
   async work() { await this.post({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'crawling the site' } }); return this.post({ hook_event_name: 'PostToolUse' }); }
   async idle() { return this.post({ hook_event_name: 'Stop' }); }

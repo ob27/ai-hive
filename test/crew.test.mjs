@@ -109,3 +109,14 @@ test('machineOf: loopback is the host; others keep their address', () => {
   assert.equal(machineOf('::1'), 'host');
   assert.equal(machineOf('203.0.113.7'), '203.0.113.7');
 });
+
+test('a note of the longest allowed length is still announced: the announcement is trimmed to fit a buzz line, not refused', () => {
+  const c = clock(); const h = hive(c, { Ann: {}, Bo: {} });
+  h.seat('Ann', 'PreToolUse'); h.seat('Bo', 'PreToolUse');
+  assert.deepEqual(h.crew.addNote('Ann', 'x'.repeat(500)), { ok: true });
+  const line = h.buzz.list().find((m) => /Ann left a handoff note/.test(m.text));
+  assert.ok(line, 'announced');
+  assert.ok(line.text.length <= 280);
+  h.seat('Ann', 'Stop'); h.seat('Bo', 'Stop');
+  assert.match(h.notice('Bo') ?? '', /Ann: x{200}/, 'the note itself is kept in full (up to its own limit)');
+});

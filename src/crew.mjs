@@ -18,6 +18,7 @@ export const CREW_DEFAULTS = {
   maxNotes: 8,
   keepMs: 60 * 60_000, // notes older than this are dropped
   helpers: 2,          // free agents to try before giving up
+  sweepMs: 10_000,     // how often it looks for notes nobody is going to pick up
 };
 
 export const DECLINES = [
@@ -66,7 +67,10 @@ export function createCrew({ store, buzz, now = Date.now, rand = Math.random, qu
     const clean = body.length > cfg.noteChars ? `${body.slice(0, cfg.noteChars - 1)}…` : body;
     const mine = notes.get(agent.project) ?? [];
     if (mine.length >= cfg.maxNotes) return { ok: false, status: 429, error: 'this project already has plenty of handoff notes waiting' };
-    const posted = buzz.post({ from: 'hive', kind: 'system', text: `📝 ${name} left a handoff note for whoever finishes last on ${agent.project}: ${clean}`, meta: { handoff: { project: agent.project, from: name } } });
+    const lead = `📝 ${name} left a handoff note for whoever finishes last on ${agent.project}: `;
+    const room = Math.max(40, (buzz.cfg?.maxChars ?? 280) - lead.length); // the announcement must fit a buzz line, or it is refused and nobody sees the note arrive
+    const shown = clean.length > room ? `${clean.slice(0, room - 1)}…` : clean;
+    const posted = buzz.post({ from: 'hive', kind: 'system', text: `${lead}${shown}`, meta: { handoff: { project: agent.project, from: name } } });
     notes.set(agent.project, [...mine, { id: `${name}:${now()}`, from: name, fromId: agent.id, text: clean, at: now(), state: 'pending', line: posted.ok ? posted.message.id : undefined }]);
     check();
     return { ok: true };
@@ -139,7 +143,7 @@ export function createCrew({ store, buzz, now = Date.now, rand = Math.random, qu
   }
 
   const off = store.subscribe(check);
-  const timer = setInterval(sweep, 10_000);
+  const timer = setInterval(sweep, cfg.sweepMs);
   timer.unref?.();
   return { addNote, check, sweep, notes, stop: () => { off(); clearInterval(timer); } };
 }

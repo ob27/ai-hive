@@ -53,6 +53,12 @@ function stableName() {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+/** HIVE_TUNING: a JSON object of per-part setting overrides, { hive, buzz, crew, bee, responder }, each merged over that part's defaults.
+ *  For tests and tuning (the end-to-end suite shortens every wait with it); unset in normal use. */
+function tuning() {
+  try { return JSON.parse(process.env.HIVE_TUNING ?? '{}'); } catch { console.error('hive: HIVE_TUNING is not valid JSON, ignored'); return {}; }
+}
+
 export async function startHost({ port = 3100, ingest = 3101, rotate = false, prefillKey, demo = false } = {}) {
   const { key, prefillKey: prefill } = loadHostConfig({ rotate, prefillKey });
   // The Hive: who is on the wall. Fed by the hook events agents send, plus service heartbeats.
@@ -60,13 +66,14 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
   monitor.captureConsole(); // what the host prints, and what it crashes with, is kept for `hive logs`
   const serviceRules = loadRules(); // what the Hive watches for in the machine stats services stream
   for (const e of serviceRules.errors) console.error(`hive: ${serviceRules.from} line ${e.line}: ${e.error}: ${e.text}`);
-  const hive = new HiveStore({ ledger: new Ledger(), rules: serviceRules.rules }).start();
-  const buzz = new BuzzLog({ invite: (m, thread) => chooseInvitees(hive, thread, m) });
+  const tune = tuning();
+  const hive = new HiveStore({ ...tune.hive, ledger: new Ledger(), rules: serviceRules.rules }).start();
+  const buzz = new BuzzLog({ ...tune.buzz, invite: (m, thread) => chooseInvitees(hive, thread, m) });
   hive.connect(buzz);
   // The bots answer people (and react to real failures) only if a model key is set: opt-in, capped, and every line is marked host-voiced.
   const info = { responder: false };
   if (process.env.ANTHROPIC_API_KEY) {
-    createResponder({ store: hive, buzz, complete: anthropicComplete({ apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.HIVE_MODEL }) });
+    createResponder({ store: hive, buzz, complete: anthropicComplete({ apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.HIVE_MODEL, ...(process.env.HIVE_MODEL_URL ? { url: process.env.HIVE_MODEL_URL } : {}) }), ...tune.responder });
     info.responder = true;
   }
   info.join = { ingest, key: prefill ? key : null }; // for the Join page; the key only if the host pre-fills it
@@ -77,8 +84,8 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
   const modeFile = join(dir, 'mode.json');
   let mode = 'work';
   const modeCtl = { get: () => mode, set: (m) => { mode = m; saveMode(modeFile, m); if (m === 'demo') sim.start(); else sim.stop(); } };
-  createBee({ store: hive, buzz, quiet }); // two agents listening in the chat get a conversation starter from the Bee
-  const crew = createCrew({ store: hive, buzz, quiet }); // agents on one project: the last one working is handed the others' notes to test and integrate
+  createBee({ store: hive, buzz, quiet, ...tune.bee }); // two agents listening in the chat get a conversation starter from the Bee
+  const crew = createCrew({ store: hive, buzz, quiet, ...tune.crew }); // agents on one project: the last one working is handed the others' notes to test and integrate
   watchHive(hive, buzz, quiet); // real changes (a service failing or recovering, someone joining) become system lines in the buzz
   const uiDir = process.env.HIVE_UI_DIR ?? join(repoRoot, 'hive-ui', 'dist');
   startScreen({ port, ingest, prefillKey: prefill ? key : null, hive, uiDir, buzz, info, mode: modeCtl, key, monitor });

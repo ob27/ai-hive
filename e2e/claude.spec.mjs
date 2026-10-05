@@ -5,6 +5,8 @@ import { runCli, sleep, until } from './harness/hive.mjs';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+test.use({ hiveOptions: { prefillKey: true } }); // the cog's boot needs no key typed in this file
+
 test('sub-agents: a robot icon and count on the parent card, from Start/Stop and from their own tool calls, gone when they stop', async ({ hive, wall }) => {
   const a = await new ClaudeAgent(hive, 'Sub1').join();
   await a.work();
@@ -89,7 +91,7 @@ test('the cog\'s Ask to listen reaches a working agent on its next event, once',
   const a = await new ClaudeAgent(hive, 'Chat4', { chatty: true }).join();
   await a.working();
   const id = (await hive.member('Chat4')).id;
-  const res = await fetch(`http://${hive.ingest.replace(/:\d+$/, `:${hive.port}`)}/hive/admin`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'listen', id, key: hive.key, by: 'tom' }) });
+  const res = await hive.admin('listen', id, 'tom');
   expect(res.status).toBe(204);
   const r = await a.hook('PostToolUse', { tool_name: 'Read' });
   expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toMatch(/tom would like you in Hive Chat[\s\S]*hive listen --seat Chat4/);

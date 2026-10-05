@@ -17,7 +17,11 @@ export class Wall {
 
 /** `hive` is one real host per worker (so files can run in parallel); `wall` is a page already pointed at it. */
 export const test = base.extend({
-  hive: [async ({}, use) => { const h = await startHive(); await h.start(); await use(h); await h.stop(); }, { scope: 'worker' }],
+  // Per spec file: test.use({ hiveOptions: { model: true, tuning: { crew: { graceMs: 2000 } } } }) (see startHive for the options).
+  hiveOptions: [{}, { option: true, scope: 'worker' }],
+  hive: [async ({ hiveOptions }, use) => { const h = await startHive(hiveOptions); await h.start(); await use(h); await h.stop(); }, { scope: 'worker' }],
+  // after every test, stand all its agents up (and boot strays) so the next test starts on an empty wall
+  _cleanup: [async ({ hive }, use) => { await hive.mark(); await use(); await hive.cleanup(); }, { auto: true }],
   wall: async ({ page, hive }, use) => { await use(await new Wall(page, hive).open()); },
 });
 export { expect };
