@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } fr
 import { userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSeat, loadSeat, pidFile, removeSeat } from '../src/seat.mjs';
+import { createSeat, loadSeat, pidFile, releaseSession, removeSeat, seatForSession } from '../src/seat.mjs';
 import { watchCopilot } from '../src/copilot.mjs';
 import { claimSeat, takePendingNotice, listenBuzz, listSeats, postBuzz, readBuzz, send } from '../src/transport.mjs';
 import { sessionStart, sessionEnd } from '../src/protocol.mjs';
@@ -171,12 +171,14 @@ function startDetachedWatcher(seat) {
 }
 
 async function hook() {
-  const seat = loadSeat(flag('seat'));
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
   // One seat = one character: report under the seat's own session id and name, whichever Claude session
   // is talking (otherwise the join and the first real session would show up as two same-named characters).
   const payload = JSON.parse(Buffer.concat(chunks).toString());
+  // Several windows can share this folder's hook file (which names one seat): each window gets a seat of its own.
+  const seat = seatForSession(payload.session_id, typeof payload.cwd === 'string' ? basename(payload.cwd) : undefined, flag('seat'));
+  if (payload.hook_event_name === 'SessionEnd' && !releaseSession(payload.session_id, seat.name)) return; // another window still sits in this seat
   const denied = gate(seat, payload); // a chat turn may not touch the project
   if (denied) return void process.stdout.write(denied);
   // A prompt is not a tool event: turn it into the "responding to <you>" chirp ourselves.
@@ -322,7 +324,7 @@ switch (cmd) {
     noteListen(seat, false);
     for (const m of r.messages) console.log(formatLine(m));
     writeCursor(seat, r.messages[r.messages.length - 1].id, r.epoch);
-    console.log('Reply with: hive buzz --reply <id> "<your line>"   then   hive listen   again.');
+    console.log(`Reply with: hive buzz --reply <id> "<your line>" --seat ${seat.name}   then   hive listen --seat ${seat.name}   again.`);
     break;
   }
   case 'status': {

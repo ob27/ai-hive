@@ -196,7 +196,7 @@ export class HiveStore {
     if (m.tools?.length && m.tools.every((t) => t === 'cursor')) return { name: m.name, refused: `${m.name} runs in Cursor, which cannot receive messages from the Hive.` };
     if (!m.chatty) return { name: m.name, refused: `${m.name} did not join with --chatty, so it cannot take part in Hive Chat. It would have to rejoin with --chatty.` };
     if (m.status !== 'active') return { name: m.name, refused: m.status === 'listening' ? `${m.name} is already listening.` : `${m.name} is not working right now, so it would only see this the next time it acts.` };
-    const text = `${from} would like you in Hive Chat. When you reach a stopping point, run \`hive listen\` (it waits about 100 seconds for someone to talk to you), answer anyone who asks with \`hive buzz --reply <id> "<one short line>"\` from what you already know or a quick web search, and keep listening until the person you work for tells you to stop (if nobody speaks for a few minutes, \`hive listen\` will tell you to go back to your task). Finish what you are doing first; you do not need to reply to this.`;
+    const text = `${from} would like you in Hive Chat. When you reach a stopping point, run \`hive listen --seat ${m.name}\` (it waits about 100 seconds for someone to talk to you), answer anyone who asks with \`hive buzz --reply <id> "<one short line>" --seat ${m.name}\` from what you already know or a quick web search, and keep listening until the person you work for tells you to stop (if nobody speaks for a few minutes, \`hive listen\` will tell you to go back to your task). Finish what you are doing first; you do not need to reply to this.`;
     this.inbox.set(id, text);
     return { name: m.name, text };
   }

@@ -207,7 +207,7 @@ const until = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new P
 
 test('a chatty seat\'s Stop hook listens, hands over the line that was asked, and locks the turn to chat-only tools until a real prompt', async () => {
   assert.equal((await run(['join', addr, 'Nina', '--key', KEY, '--chatty', '--claude'])).status, 0);
-  const stop = run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'x', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
+  const stop = run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'Nina', cwd: home }, { HIVE_LISTEN_WAIT: '8' });
   await until(() => store.snapshot().find((m) => m.name === 'Nina')?.status === 'listening');
   await new Promise((r) => setTimeout(r, 700)); // the hook has taken its place in the chat (its first look fixes where "from now on" starts)
   buzz.post({ from: 'tom', kind: 'human', text: 'hi everyone' });
@@ -216,14 +216,14 @@ test('a chatty seat\'s Stop hook listens, hands over the line that was asked, an
   assert.match(handed.reason, /^\[Hive chat\][\s\S]*tom \(human\): hi everyone[\s\S]*hive buzz --reply/);
   assert.match(handed.reason, /Do not read, open, search, edit or run anything/);
 
-  const pre = (tool_name, tool_input) => run(['hook', '--seat', 'Nina'], { hook_event_name: 'PreToolUse', tool_name, tool_input, session_id: 'x', cwd: home });
+  const pre = (tool_name, tool_input) => run(['hook', '--seat', 'Nina'], { hook_event_name: 'PreToolUse', tool_name, tool_input, session_id: 'Nina', cwd: home });
   assert.equal(JSON.parse((await pre('Read', { file_path: 'secrets.env' })).out).hookSpecificOutput.permissionDecision, 'deny');
   assert.equal((await pre('Bash', { command: 'hive buzz --reply 3 "hello"' })).out, '', 'the chat command is allowed');
   assert.equal((await pre('WebSearch', { query: 'x' })).out, '', 'a web lookup is allowed');
 
-  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: handed.reason, session_id: 'x', cwd: home });
+  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: handed.reason, session_id: 'Nina', cwd: home });
   assert.ok(JSON.parse((await pre('Read', { file_path: 'a' })).out), 'our own follow-up prompt does not lift the lock');
-  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: 'please fix the build', session_id: 'x', cwd: home });
+  await run(['hook', '--seat', 'Nina'], { hook_event_name: 'UserPromptSubmit', prompt: 'please fix the build', session_id: 'Nina', cwd: home });
   assert.equal((await pre('Read', { file_path: 'a' })).out, '', 'a real prompt does');
 });
 
@@ -244,7 +244,7 @@ test('a saved place from before the host restarted (ids began again at 1) does n
 });
 
 test('the same Stop hook lets the turn end when nobody speaks, and a seat that is not chatty never listens', async () => {
-  const quiet = await run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'x', cwd: home }, { HIVE_LISTEN_WAIT: '1' });
+  const quiet = await run(['hook', '--seat', 'Nina'], { hook_event_name: 'Stop', session_id: 'Nina', cwd: home }, { HIVE_LISTEN_WAIT: '1' });
   assert.equal(quiet.out, '');
   assert.equal((await run(['join', addr, 'Pat', '--key', KEY, '--claude'])).status, 0);
   const t0 = Date.now();

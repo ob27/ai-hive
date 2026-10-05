@@ -136,9 +136,9 @@ test('boot removes the agent, and its next event brings it the news once and sea
   assert.equal((await admin({ action: 'boot', id, key: KEY, by: 'tom' })).status, 204);
   assert.equal(find(store, 'Tess'), undefined);
   assert.ok(buzz.list(5).some((l) => /Tess was booted from the hive by tom/.test(l.text)));
-  const r = await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PostToolUse', tool_name: 'Bash', session_id: 'x', cwd: home });
+  const r = await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PostToolUse', tool_name: 'Bash', session_id: 'Tess', cwd: home });
   assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /removed you from the Hive/);
-  await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' }, session_id: 'x', cwd: home });
+  await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' }, session_id: 'Tess', cwd: home });
   assert.equal(find(store, 'Tess'), undefined);
   const prod = await (await fetch(`http://${wallAddr}/hive/production`)).json();
   assert.equal(typeof prod.total, 'number');
@@ -147,13 +147,13 @@ test('boot removes the agent, and its next event brings it the news once and sea
 test('"responding to" names the person the agent works for: --user at join, else $HIVE_USER, else the machine\'s account name', async () => {
   assert.equal((await run(['join', ingestAddr, 'Dana', '--key', KEY, '--claude', '--user', 'Dana Whitfield'])).status, 0);
   assert.equal(find(store, 'Dana').user, 'Dana Whitfield');
-  const prompt = (env) => run(['hook', '--seat', 'Dana'], { hook_event_name: 'UserPromptSubmit', prompt: 'do it', session_id: 'x', cwd: home }, env);
+  const prompt = (env) => run(['hook', '--seat', 'Dana'], { hook_event_name: 'UserPromptSubmit', prompt: 'do it', session_id: 'Dana', cwd: home }, env);
   await prompt({});
   assert.equal(find(store, 'Dana').activity, 'responding to Dana Whitfield');
   await prompt({ HIVE_USER: 'Sam' });
   assert.equal(find(store, 'Dana').activity, 'responding to Sam', 'the environment can override it for one run');
   assert.equal((await run(['join', ingestAddr, 'Eve', '--key', KEY, '--claude'])).status, 0);
-  await run(['hook', '--seat', 'Eve'], { hook_event_name: 'UserPromptSubmit', prompt: 'do it', session_id: 'x', cwd: home });
+  await run(['hook', '--seat', 'Eve'], { hook_event_name: 'UserPromptSubmit', prompt: 'do it', session_id: 'Eve', cwd: home });
   assert.match(find(store, 'Eve').activity, /^responding to \S+/, 'no --user: falls back to the account name');
   assert.equal(find(store, 'Eve').user, undefined);
   await run(['leave', '--seat', 'Dana']); await run(['leave', '--seat', 'Eve']);
@@ -182,10 +182,10 @@ test('the cog\'s Ask to listen reaches a working agent on its next hook event, a
   assert.equal((await run(['join', ingestAddr, 'Lee', '--key', KEY, '--chatty', '--claude'])).status, 0);
   const id = find(store, 'Lee').id;
   assert.equal((await admin({ action: 'listen', id, key: KEY })).status, 409, 'idle: nothing running to receive it');
-  await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'a.js' }, session_id: 'x', cwd: home });
+  await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'a.js' }, session_id: 'Lee', cwd: home });
   assert.equal((await admin({ action: 'listen', id, key: KEY, by: 'tom' })).status, 204);
   assert.ok(buzz.list(5).some((l) => /tom asked Lee to listen/.test(l.text)));
-  const r = await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PostToolUse', tool_name: 'Edit', session_id: 'x', cwd: home });
+  const r = await run(['hook', '--seat', 'Lee'], { hook_event_name: 'PostToolUse', tool_name: 'Edit', session_id: 'Lee', cwd: home });
   assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /^\[Hive\] tom would like you in Hive Chat[\s\S]*hive listen/);
   assert.equal((await admin({ action: 'listen', id: 'ghost', key: KEY })).status, 404);
   await run(['leave', '--seat', 'Lee']);

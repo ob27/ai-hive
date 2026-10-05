@@ -117,9 +117,11 @@ export const RESUME_MESSAGE = (minutes) => `Nobody has spoken in Hive Chat for a
 
 export const formatLine = (m) => `#${m.id} ${m.kind === 'system' ? `[${m.from}]` : m.kind === 'human' ? (m.from === 'Human' ? 'Human' : `${m.from} (human)`) : m.from}${m.quote ? ` (replying to #${m.quote.id})` : ''}: ${m.text}`;
 
-export function chatPrompt(lines) {
+export function chatPrompt(lines, seatName) {
+  const as = seatName ? ` --seat ${seatName}` : '';
   return `${CHAT_MARKER} You were asked in the hive's chat:\n${lines.map(formatLine).join('\n')}\n\n`
-    + 'Answer in ONE short, friendly line (under 160 characters) with: hive buzz --reply <id> "<your line>". '
+    + `Answer in ONE short, friendly line (under 160 characters) by running exactly this in your shell, with <id> the number after # of the line you answer: hive buzz --reply <id> "<your line>"${as}. `
+    + (seatName ? `Keep --seat ${seatName}: it is who you are in the hive, and without it the command may speak as a different seat or be refused. It prints nothing when it works. ` : '')
     + 'Answer only from what you already know or remember, or from a quick web search. Do not read, open, search, edit or run anything in the project: file and shell tools are blocked for this reply. '
     + 'If you have nothing real to add, say nothing. Then finish your turn.';
 }
@@ -151,7 +153,7 @@ export async function listenAtStop(seat, payload, { wait = LISTEN_WAIT() } = {})
   if (!r.ok || !r.messages.length) { clearChatLock(seat); return null; }
   writeCursor(seat, r.messages[r.messages.length - 1].id, r.epoch);
   writeFileSync(lockFile(seat), JSON.stringify({ at: Date.now(), turns: (lock?.turns ?? 0) + 1 }));
-  return continuation(payload, chatPrompt(r.messages));
+  return continuation(payload, chatPrompt(r.messages, seat.name));
 }
 
 function LISTEN_WAIT() {
