@@ -20,6 +20,7 @@ const ICONS: Record<MetricKey, ReactNode> = {
   mem: svg(<><rect x="2" y="7" width="20" height="9" rx="1" /><path d="M5 10v3M8.5 10v3M12 10v3M15.5 10v3M19 10v3M5 16v2M9 16v2M15 16v2M19 16v2" /></>),
   load: svg(<><path d="M4.5 18a8.5 8.5 0 1 1 15 0" /><path d="M12 15l4-5" /><circle cx="12" cy="15" r="1" /><path d="M6 12.5l.8.5M12 6.5V8M18 12.5l-.8.5" /></>),
   disk: svg(<><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 14h18" /><circle cx="7" cy="16" r=".5" /><path d="M16 16h2" /></>),
+  net: svg(<><path d="M7 17V7M4 10l3-3 3 3" /><path d="M17 7v10M14 14l3 3 3-3" /></>),
   temp: svg(<><path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z" /><path d="M12 9v7" /></>),
 };
 const LABELS: Record<MetricKey, (n: number) => [string, string]> = {
@@ -28,15 +29,16 @@ const LABELS: Record<MetricKey, (n: number) => [string, string]> = {
   mem: (n) => [`${n}%`, `Memory ${n}%`],
   load: (n) => [`${n}%`, `Load ${n}% of the cores`],
   disk: (n) => [`${n}%`, `Disk ${n}% full`],
+  net: (n) => [n >= 1000 ? `${Math.round(n / 100) / 10}G` : `${n}M`, `Network ${n} Mbit/s (received + sent, all interfaces)`],
   temp: (n) => [`${n}°`, `Temperature ${n} °C`],
 };
-const WORDS: Record<MetricKey, RegExp> = { cpu: /cpu|processor/i, gpu: /gpu|graphics/i, mem: /memory|\bmem\b|leak|swap/i, load: /load/i, disk: /disk|storage|space/i, temp: /temp|hot|heat|thermal/i };
+const WORDS: Record<MetricKey, RegExp> = { cpu: /cpu|processor/i, gpu: /gpu|graphics/i, mem: /memory|\bmem\b|leak|swap/i, load: /load/i, disk: /disk|storage|space/i, net: /network|bandwidth|traffic|mbit/i, temp: /temp|hot|heat|thermal/i };
 const COLOURS = { warn: "#E8A33D", bad: "var(--rebar-color-danger, #d32f2f)" };
 
 function Gauges({ member }: { member: HiveMember }) {
   const m = member.metrics;
   if (!m) return null;
-  const keys = (["cpu", "gpu", "mem", "load", "temp", "disk"] as MetricKey[]).filter((k) => typeof m[k] === "number" && Number.isFinite(m[k]));
+  const keys = (["cpu", "gpu", "mem", "load", "net", "temp", "disk"] as MetricKey[]).filter((k) => typeof m[k] === "number" && Number.isFinite(m[k]));
   if (!keys.length) return null;
   return (
     <div role="group" aria-label="Machine readings" style={{ display: "flex", gap: 14, alignItems: "center" }}>

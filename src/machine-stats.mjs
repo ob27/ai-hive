@@ -1,4 +1,4 @@
-// What a service can say about the machine it runs on, for its heartbeat (`hive heartbeat --metrics`): cpu, mem, load, disk (percent) and temp (°C).
+// What a service can say about the machine it runs on, for its heartbeat (`hive heartbeat --metrics`): cpu, gpu, mem, load, disk (percent), net (Mbit/s) and temp (°C).
 // Only what the machine can tell us without special rights: a reading that is not available (load on Windows, temperature when no sensor tool is installed)
 // is left out, never faked. Node's own `os` module, plus one small command each for the things it cannot see. For temperature on a Mac install
 // `macmon` (brew install macmon), or point --temp-command at any probe that prints a number.
@@ -56,6 +56,11 @@ export function diskPercent() {
 const hottest = (nums) => { const t = nums.filter((n) => Number.isFinite(n) && n > 0 && n < 150); return t.length ? Math.round(Math.max(...t) * 10) / 10 : undefined; };
 const numbers = (text) => [...String(text).matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
 
+/** The hottest "tempN_input" in `sensors -u` (lm-sensors) output. Pure, for tests. */
+export function parseSensors(text) {
+  return hottest([...String(text).matchAll(/temp\d+_input:\s*(-?\d+(?:\.\d+)?)/g)].map((m) => Number(m[1])));
+}
+
 /** Pulls a temperature out of what a probe tool prints: macmon's JSON (cpu/gpu temperatures), or just the first number in plain text ("61.8°C"). Pure, for tests. */
 export function parseTemperature(text) {
   const t = String(text).trim();
@@ -83,12 +88,19 @@ export function tempCelsius({ command } = {}) {
     }
     return undefined;
   }
+  if (process.platform === 'win32') {
+    // ACPI thermal zones in tenths of a kelvin (needs an elevated shell on many machines); anything better goes through --temp-command.
+    const k = numbers(run('powershell', ['-NoProfile', '-Command', '(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature).CurrentTemperature'])).map((n) => n / 10 - 273.15);
+    return hottest(k);
+  }
   if (process.platform === 'linux') {
     const temps = [];
     try { for (const z of readdirSync('/sys/class/thermal').filter((n) => n.startsWith('thermal_zone'))) temps.push(Number(readFileSafe(`/sys/class/thermal/${z}/temp`)) / 1000); } catch { /* none */ }
     try { for (const h of readdirSync('/sys/class/hwmon')) for (const f of readdirSync(`/sys/class/hwmon/${h}`).filter((n) => /^temp\d+_input$/.test(n))) temps.push(Number(readFileSafe(`/sys/class/hwmon/${h}/${f}`)) / 1000); } catch { /* none */ }
     const gpu = parseTemperature(run('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader']));
-    return hottest([...temps, ...(gpu === undefined ? [] : [gpu])]);
+    const pi = parseTemperature(run('vcgencmd', ['measure_temp'])); // Raspberry Pi: "temp=48.3'C"
+    const lm = temps.length ? undefined : parseSensors(run('sensors', ['-u'])); // lm-sensors, when the kernel files gave nothing
+    return hottest([...temps, ...(gpu === undefined ? [] : [gpu]), ...(pi === undefined ? [] : [pi]), ...(lm === undefined ? [] : [lm])]);
   }
   return undefined;
 }
@@ -114,10 +126,58 @@ export function gpuPercent({ command, macmon } = {}) {
   return Array.isArray(u) && typeof u[1] === 'number' ? mean([u[1] * 100]) : undefined;
 }
 
+/** Total bytes received and sent over every real interface (not loopback), or null. Pure parsers below, for tests. */
+export function parseNetDev(text) { // Linux /proc/net/dev
+  let rx = 0, tx = 0, seen = false;
+  for (const line of String(text).split('\n')) {
+    const m = /^\s*([^:\s]+):\s*(\d+)(?:\s+\d+){7}\s+(\d+)/.exec(line);
+    if (!m || m[1] === 'lo') continue;
+    rx += Number(m[2]); tx += Number(m[3]); seen = true;
+  }
+  return seen ? { rx, tx } : null;
+}
+export function parseNetstatIb(text) { // macOS `netstat -ib`: one Link-layer row per interface
+  let rx = 0, tx = 0, seen = false;
+  const lines = String(text).split('\n');
+  const cols = lines[0]?.trim().split(/\s+/) ?? [];
+  const iI = cols.indexOf('Ibytes'), iO = cols.indexOf('Obytes');
+  if (iI < 0 || iO < 0) return null;
+  for (const line of lines.slice(1)) {
+    const f = line.trim().split(/\s+/);
+    if (!/^<Link#\d+>$/.test(f[2] ?? '') || /^(lo|gif|stf|utun|awdl|llw|bridge|ap)\d*$/.test(f[0])) continue;
+    // a row without an address has one column fewer, so index from the end
+    const off = f.length - cols.length;
+    const i = Number(f[iI + off]), o = Number(f[iO + off]);
+    if (Number.isFinite(i) && Number.isFinite(o)) { rx += i; tx += o; seen = true; }
+  }
+  return seen ? { rx, tx } : null;
+}
+export function parseNetstatE(text) { // Windows `netstat -e`: "Bytes   <received>   <sent>"
+  const m = /Bytes\s+(\d+)\s+(\d+)/i.exec(String(text));
+  return m ? { rx: Number(m[1]), tx: Number(m[2]) } : null;
+}
+const netTotals = () => process.platform === 'linux' ? parseNetDev(readFileSafe('/proc/net/dev'))
+  : process.platform === 'darwin' ? parseNetstatIb(run('netstat', ['-ib']))
+  : process.platform === 'win32' ? parseNetstatE(run('netstat', ['-e'])) : null;
+
+let prevNet = null;
+/** Network traffic in Mbit/s (received + sent, summed over every interface) since the last call. The first call is undefined: a rate needs two readings.
+ *  Throughput is added up, not averaged, because two links carry the sum. `command` (or $HIVE_NET_COMMAND) may print a Mbit/s number itself. */
+export function netMbps({ command, totals = netTotals, now = Date.now } = {}) {
+  const custom = command ?? process.env.HIVE_NET_COMMAND;
+  if (custom) { const n = numbers(run('sh', ['-c', custom]))[0]; return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : undefined; }
+  const cur = totals();
+  if (!cur) return undefined;
+  const at = now(), prev = prevNet;
+  prevNet = { ...cur, at };
+  if (!prev || at <= prev.at || cur.rx < prev.rx || cur.tx < prev.tx) return undefined; // first sample, or a counter reset
+  return Math.round((((cur.rx - prev.rx) + (cur.tx - prev.tx)) * 8 / 1e6 / ((at - prev.at) / 1000)) * 10) / 10;
+}
+
 /** One reading of everything this machine can tell us. Only the values that exist are present. */
-export async function sampleMachine({ tempCommand, gpuCommand } = {}) {
+export async function sampleMachine({ tempCommand, gpuCommand, netCommand } = {}) {
   const macmon = process.platform === 'darwin' && !tempCommand && !process.env.HIVE_TEMP_COMMAND ? macmonJson() : undefined; // one call for both the temperature and the GPU
   const temp = macmon ? parseTemperature(JSON.stringify(macmon)) : tempCelsius({ command: tempCommand });
-  const m = { cpu: await cpuPercent(), gpu: gpuPercent({ command: gpuCommand, macmon }), mem: memPercent(), load: loadPercent(), disk: diskPercent(), temp };
+  const m = { cpu: await cpuPercent(), gpu: gpuPercent({ command: gpuCommand, macmon }), mem: memPercent(), load: loadPercent(), disk: diskPercent(), net: netMbps({ command: netCommand }), temp };
   return Object.fromEntries(Object.entries(m).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)));
 }

@@ -63,6 +63,17 @@ If your tool has no end-of-turn hook (a plain `hive say` agent), you can loop by
 until told to stop. If nobody speaks for a couple of listens in a row, `hive listen` itself tells you to stop and go back to what you were doing
 before: do that, and don't start listening again unless asked. The same buzz rules apply (real things only, one short line, the hourly cap).
 
+## Working alongside others on one project (`--chatty` only)
+
+If other agents are working on your project at the same time, the Hive tells you who (a line starting `[Hive]`). Nobody owns the last steps
+(testing it all together, integrating, committing and pushing), so:
+
+    hive handoff "<what you changed, what needs testing or integrating, and whether you were asked to commit and push>" --seat <name>
+
+- **If you finish before them**, leave a handoff note like that and end your turn. Keep it under 240 characters and say honestly whether you were asked to commit and push.
+- **If you are the last one working**, the Hive hands you the others' notes. Test everything together, integrate it, and commit and push if a note says its author was asked to.
+- Do not do the other agents' parts of the work, and do not commit or push for someone unless their note says they were asked to.
+
 ## When you're waiting
 
 If you need the person to answer or approve something, `hive say "waiting for <person>"` before you ask.

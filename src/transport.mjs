@@ -23,6 +23,23 @@ export async function send(seat, payload, { quiet = true, joining = false } = {}
   }
 }
 
+/** `hive handoff`: leave a note for whoever finishes last on this seat's project. { ok } or { ok: false, error }. Never throws. */
+export async function postHandoff(seat, text) {
+  try {
+    const res = await fetch(`${seat.url}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${seat.token}` },
+      body: JSON.stringify({ name: seat.name, text }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) return { ok: true };
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.error ?? `the hive answered ${res.status}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 /** `hive buzz`: say a line in the Hive's chat. { ok } or { ok: false, error }. Never throws. */
 export async function postBuzz(seat, text, replyTo) {
   try {

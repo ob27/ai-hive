@@ -62,7 +62,7 @@ export function parseHeartbeat(body) {
       if (v === undefined || v === null) continue;
       if (Array.isArray(v) || (v && typeof v === 'object')) return { error: `metrics.${k} must be one number: send the average across all of them (all CPUs, all GPUs), not one per core` };
       if (typeof v !== 'number' || !Number.isFinite(v)) return { error: `metrics.${k} must be a number` };
-      metrics[k] = k === 'temp' ? Math.max(-50, Math.min(250, v)) : Math.max(0, Math.min(1000, v));
+      metrics[k] = k === 'temp' ? Math.max(-50, Math.min(250, v)) : Math.max(0, Math.min(k === 'net' ? 1e6 : 1000, v));
     }
     if (!Object.keys(metrics).length) metrics = undefined;
   }
@@ -160,6 +160,20 @@ export function handleHumanBuzz(req, res, buzz, hive = null) {
       const before = buzz.list(2).find((m) => m.id !== r.message.id && m.text === NOBODY_MESSAGE); // do not repeat it for a second line typed straight after
       if (!before || r.message.at - before.at > 30_000) buzz.post({ from: 'hive', kind: 'system', text: NOBODY_MESSAGE, replyTo: r.message.id });
     }
+    res.writeHead(204).end();
+  });
+  return true;
+}
+
+/** POST /api/handoff (keyed): { name, text }. A chatty agent leaves a note for whoever finishes last on its project (crew.mjs). */
+export function handleHandoffPost(req, res, crew, key) {
+  if (req.method !== 'POST' || req.url.split('?')[0] !== '/api/handoff') return false;
+  if (!same(req.headers.authorization ?? '', `Bearer ${key}`)) { res.writeHead(401).end('unauthorized'); return true; }
+  readJson(req, res).then((body) => {
+    if (!body) return;
+    if (!crew) return json(res, 404, { error: 'this host does not run crew handoffs' });
+    const r = crew.addNote(typeof body.name === 'string' ? body.name : '', body.text);
+    if (!r.ok) return json(res, r.status, { error: r.error });
     res.writeHead(204).end();
   });
   return true;

@@ -108,6 +108,7 @@ export class HiveStore {
     if (model) a.modelName = clip(String(model), 80);
     if (typeof meta.user === 'string' && meta.user.trim()) a.user = clip(meta.user.trim(), 24); // the person this agent works for
     if (typeof meta.slot === 'string' && meta.slot) a.slot = meta.slot; // this agent's place in its project's cast (roster.mjs): its identity for production
+    if (typeof meta.addr === 'string') a.addr = meta.addr; // which machine it reports from (never shown): crew.mjs looks for a free agent on the same one
     if (meta.sim === true) a.sim = true; // the demo's pretend agents never open a real listen, so they listen on a timer
     if (typeof meta.chatty === 'boolean') a.chatty = meta.chatty; // opted in to buzz (`hive join --chatty`)
     if (Array.isArray(meta.hooks)) a.hooks = meta.hooks.filter((h) => typeof h === 'string').slice(0, 6); // which tools report for it; [] = joined without hooks

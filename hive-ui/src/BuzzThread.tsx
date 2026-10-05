@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BuzzMessage } from "./buzz";
 
 export const SNIPPET: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
@@ -38,9 +38,11 @@ export function BuzzThread({ messages, onReply }: { messages: BuzzMessage[]; onR
       {messages.length ? (
         <ul aria-label="Buzz" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           {messages.map((m) =>
-            m.kind === "system" ? (
+            m.handoffAlert ? (
+              <HandoffAlert key={m.id} m={m} />
+            ) : m.kind === "system" ? (
               <li key={m.id} style={{ fontSize: 13, fontStyle: "italic", color: muted }}>
-                <span aria-hidden="true">{m.from.startsWith("🐝") ? "🐝 " : "⚡ "}</span>
+                <span aria-hidden="true">{m.from.startsWith("🐝") ? "🐝 " : m.handoff ? "" : "⚡ "}</span>
                 {m.from.startsWith("🐝") ? <strong style={{ fontStyle: "normal" }}>Bee: </strong> : null}
                 {m.text}
                 {onReply ? (
@@ -84,5 +86,26 @@ export function Quote({ q }: { q: NonNullable<BuzzMessage["quote"]> }) {
       <strong style={{ color: "var(--rebar-color-text-primary, #1a1a1a)" }}>{q.kind === "system" ? "⚡ hive event" : q.from}</strong>
       <div style={{ ...SNIPPET, ...(q.kind === "system" ? { fontStyle: "italic" } : {}) }}>{q.text}</div>
     </div>
+  );
+}
+
+/** The hive's notice that handoff notes were not picked up by any agent: the notes, and a button to copy them for a person to act on. */
+function HandoffAlert({ m }: { m: BuzzMessage }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(m.handoffAlert?.copy ?? "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked: the text is still on screen */ }
+  };
+  return (
+    <li role="alert" style={{ fontSize: 13, border: "1px solid var(--rebar-color-border, #e0a800)", borderLeft: "4px solid #f6be5a", borderRadius: 8, padding: "8px 10px", background: "var(--rebar-color-bg-secondary, #fff8e6)" }}>
+      <div style={{ fontWeight: 600 }}>📝 {m.text}</div>
+      <pre style={{ margin: "6px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", fontSize: 12, color: muted }}>{m.handoffAlert?.copy}</pre>
+      <button type="button" onClick={copy} style={{ cursor: "pointer", font: "inherit", fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid currentColor", background: "none", color: "inherit" }}>
+        {copied ? "Copied" : "Copy to clipboard"}
+      </button>
+    </li>
   );
 }

@@ -68,7 +68,10 @@ The screen: `http://<host>:3100/` (also `/hive/`). One tile per agent or service
   A machine with several CPUs or GPUs still reports **one number each**: the average across all of them (cpu already is the average over every core of
   every socket; gpu is the average over all GPUs, from `nvidia-smi`, the kernel's DRM counters or macmon, or `--gpu-command "<cmd printing a percent>"`), and
   temp is the hottest sensor. The host refuses a per-core list with a message saying so.
-  With no sensor the temperature is left out, never guessed. The details box shows them
+  `net` is network traffic in **Mbit/s** (received + sent, added up over every real interface, since the last heartbeat; the first heartbeat has none): read
+  from `/proc/net/dev` on Linux, `netstat -ib` on macOS and `netstat -e` on Windows, or `--net-command "<cmd printing Mbit/s>"` (`HIVE_NET_COMMAND`). It has no
+  default alert rule, because what counts as busy depends on the link: add one such as `net > 800 for 5m -> degraded "Network saturated"` to `service-rules.txt`.
+  With no sensor the temperature is left out, never guessed. See *Temperature probes* below for what works on which system. The details box shows them
   as gauges. The host runs a small rules layer over what it is sent (`src/service-rules.mjs`) and lets the status follow the machine, with the reason, so
   a service that says "all fine" while its memory climbs steadily for ten minutes (or its CPU sits above 90% for two) shows as Degraded, and 100 °C as
   a Failure. The rules are a few readable lines and the defaults are in the file; your own go in `~/.workspace-office/service-rules.txt` and replace them:
@@ -151,6 +154,22 @@ the page can switch the mode; by default it is kept to people who know the key.
 The **Join page** (`/join-page`, which redirects to `/hive/join`) is built from Rebar UI inside the Hive screen: your key, an optional bee name, a
 *Buzzy bee* switch (`--chatty`), and a tab per tool (any machine, Claude Code, Qwen, Gemini/Cursor/Codex, Copilot, local models, headless, any agent,
 services, leaving) with copyable commands that fill in as you type. A host without the built screen falls back to the plain page.
+
+### Temperature probes (what Hive can read, by platform)
+
+`hive heartbeat --metrics` reports the **hottest sensor in °C**. It tries, in order: your own probe (`--temp-command "<cmd>"` or `HIVE_TEMP_COMMAND`, anything that prints a number or a
+line like `61.8°C`), then what the platform offers. A reading that is not available is left out, never faked. Readings outside 0–150 °C are discarded as nonsense.
+
+| Platform | Works with no install | Install for a reading | Notes |
+|---|---|---|---|
+| **macOS, Apple Silicon** | nothing | [`macmon`](https://github.com/vladkens/macmon) (`brew install macmon`) | No sudo. Also supplies GPU usage. `istats` (`gem install iStats`) is a fallback. |
+| **macOS, Intel** | nothing | `osx-cpu-temp` (`brew install osx-cpu-temp`) or `istats` | |
+| **Linux** | kernel `/sys/class/thermal` and `/sys/class/hwmon` | `lm-sensors` (`sensors -u`) when the kernel files are empty | Read-only, no root. NVIDIA GPU temperature via `nvidia-smi` if present. |
+| **Raspberry Pi** | `vcgencmd measure_temp` (ships with Raspberry Pi OS) | | Also covered by the Linux thermal zone. |
+| **Windows** | ACPI thermal zone through PowerShell (`MSAcpi_ThermalZoneTemperature`) | [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) or HWiNFO, then `--temp-command` | The ACPI zone often needs an **administrator** shell and many desktops do not expose it, so expect to use a probe. |
+| **Anything else** (BSD, NAS, a vendor box) | | any command that prints °C | `--temp-command "snmpget … \| awk …"`, `--metric temp=61` for a fixed reading, or send `metrics.temp` yourself over the HTTP API. |
+
+Several sensors are one number (the hottest). GPU temperature is included where the tool reports it (`nvidia-smi`, `macmon`), so a hot GPU shows as a hot machine.
 
 ### Hooking in, and keeping an eye on it
 

@@ -12,6 +12,7 @@ import { Roster } from './roster.mjs';
 import { loadRules } from './service-rules.mjs';
 import { BuzzLog, watchHive } from './buzz.mjs';
 import { createBee } from './bee.mjs';
+import { createCrew } from './crew.mjs';
 import { RESPONDER_DEFAULTS, anthropicComplete, createResponder } from './responder.mjs';
 import { describeSettings } from './hive-http.mjs';
 import { createIngest } from './ingest.mjs';
@@ -77,6 +78,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
   let mode = 'work';
   const modeCtl = { get: () => mode, set: (m) => { mode = m; saveMode(modeFile, m); if (m === 'demo') sim.start(); else sim.stop(); } };
   createBee({ store: hive, buzz, quiet }); // two agents listening in the chat get a conversation starter from the Bee
+  const crew = createCrew({ store: hive, buzz, quiet }); // agents on one project: the last one working is handed the others' notes to test and integrate
   watchHive(hive, buzz, quiet); // real changes (a service failing or recovering, someone joining) become system lines in the buzz
   const uiDir = process.env.HIVE_UI_DIR ?? join(repoRoot, 'hive-ui', 'dist');
   startScreen({ port, ingest, prefillKey: prefill ? key : null, hive, uiDir, buzz, info, mode: modeCtl, key, monitor });
@@ -85,7 +87,7 @@ export async function startHost({ port = 3100, ingest = 3101, rotate = false, pr
 
   // The keyed ingest: where agents and services join, report, buzz and heartbeat.
   http.createServer(createIngest({
-    hive, buzz, key, monitor, roster: new Roster(),
+    hive, buzz, key, monitor, crew, roster: new Roster(),
     hostStatus: () => describeHost({ hive, buzz, mode: modeCtl, uiDir, ports: { screen: port, ingest }, info }),
     defaultBase: () => `${lanIp()}:${ingest}`,
     seatNames: () => hive.snapshot().filter((m) => m.kind === 'agent').map((m) => m.name),

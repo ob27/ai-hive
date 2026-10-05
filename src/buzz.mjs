@@ -37,9 +37,10 @@ export class BuzzLog {
    * `limitKey` is who a human line is rate-limited as (a client address).
    * `replyTo` is the id of the line this one answers; the message carries a snapshot of it (`quote`) so the screen can show it
    * quoted, and the quote survives the original scrolling out of the thread. An unknown id is ignored.
+   * `meta` (host lines only): extra fields carried on the message (a handoff announcement, a task for an agent: crew.mjs).
    * `invitees` (host lines only, kind 'system') names who may answer, overriding the usual choice (the Bee's conversation starters, bee.mjs).
    */
-  post({ from, kind = 'agent', text, via, limitKey, replyTo, invitees }) {
+  post({ from, kind = 'agent', text, via, limitKey, replyTo, invitees, meta }) {
     const body = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
     if (!from) return { ok: false, status: 400, error: 'from is required' };
     if (!body) return { ok: false, status: 400, error: 'text is required' };
@@ -64,7 +65,7 @@ export class BuzzLog {
     }
     const quote = target ? { id: target.id, from: target.from, kind: target.kind, text: target.text.length > 140 ? `${target.text.slice(0, 139)}…` : target.text } : undefined;
     const invited = kind === 'system' && Array.isArray(invitees) ? (invitees.length ? invitees : undefined) : this.invite && !via ? this.invite({ from, kind, text: body, replyTo: target?.id }, this.messages) : undefined;
-    const message = { id: this.nextId++, at: now, from, kind, text: body, ...(via ? { via } : {}), ...(quote ? { quote } : {}), ...(invited ? { invited } : {}) };
+    const message = { id: this.nextId++, at: now, from, kind, text: body, ...(via ? { via } : {}), ...(quote ? { quote } : {}), ...(invited ? { invited } : {}), ...(kind === 'system' && meta ? meta : {}) };
     this.messages.push(message);
     if (this.messages.length > this.cfg.keep) this.messages.splice(0, this.messages.length - this.cfg.keep);
     for (const fn of this.listeners) fn(this.messages);

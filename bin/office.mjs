@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSeat, loadSeat, pidFile, releaseSession, removeSeat, seatForSession } from '../src/seat.mjs';
 import { watchCopilot } from '../src/copilot.mjs';
-import { claimSeat, takePendingNotice, listenBuzz, listSeats, postBuzz, readBuzz, send } from '../src/transport.mjs';
+import { claimSeat, takePendingNotice, listenBuzz, listSeats, postBuzz, postHandoff, readBuzz, send } from '../src/transport.mjs';
 import { sessionStart, sessionEnd } from '../src/protocol.mjs';
 import { applyAction, chirp, idle } from '../src/chirp.mjs';
 import { cursorAllow, parseHookPayload } from '../src/normalize.mjs';
@@ -47,6 +47,7 @@ const HELP = `hive — join the AI Hive. (The older \`office\` command still wor
   hive listen [--wait S] [--seat <name>]                      sit in the chat: wait (default 100s) for someone else to speak, print it, exit (3 = quiet)
   hive buzz "<a line>" [--seat <name>]                       say something in the hive's chat (needs: join … --chatty)
   hive buzz "<a line>" --reply <id>                         answer a line (it shows quoted); get ids from --read
+  hive handoff "<note>" [--seat <name>]                      leave a note for whoever finishes last on your project (needs: join … --chatty)
   hive buzz --read [--limit 20]                             read the recent buzz (with ids) before you reply
   hive status [--url host[:ingest]] [--screen 3100] [--key K] [--members] [--json] [--watch SECS]
                                                               is the hive working? Checks it from outside the way a browser or an agent
@@ -252,8 +253,9 @@ switch (cmd) {
   }
   case 'heartbeat': {
     const id = flag('id');
-    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value] [--temp-command "<cmd>"] [--gpu-command "<cmd>"]');
+    if (!id) die('usage: hive heartbeat --id <id> [--name N] [--project P] [--status ok|degraded|failure|gone] [--message "…"] [--ttl 60] [--every 30] [--logs] [--metrics] [--metric name=value] [--temp-command "<cmd>"] [--gpu-command "<cmd>"] [--net-command "<cmd>"]');
     const gpuCommand = flag('gpu-command'); // any command that prints the GPU busy percent (the average, if there are several)
+    const netCommand = flag('net-command'); // any command that prints network throughput in Mbit/s
     const tempCommand = flag('temp-command'); // any command that prints a temperature in °C: your own sensor probe
     const withMetrics = bool('metrics'); // stream this machine's cpu / memory / load / disk / temperature with each heartbeat
     const fixed = {}; // --metric temp=61 (repeatable): a reading the machine cannot give by itself
@@ -276,7 +278,7 @@ switch (cmd) {
           lastLine = s.last; extra = { status: s.status, message: s.message, ...extra };
         } catch { /* the host will not answer a heartbeat either: that failure is reported below */ }
       }
-      const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine({ tempCommand, gpuCommand }) : {}), ...fixed } : undefined;
+      const metrics = withMetrics || Object.keys(fixed).length ? { ...(withMetrics ? await sampleMachine({ tempCommand, gpuCommand, netCommand }) : {}), ...fixed } : undefined;
       const r = await postHeartbeat(url, key, heartbeatBody({ ...fields, ...extra, metrics }));
       if (!r.ok) console.error(`hive: heartbeat failed: ${r.error}`);
       return r.ok;
@@ -306,6 +308,14 @@ switch (cmd) {
     const text = rest.join(' ');
     if (!text) die('usage: hive buzz "<a line>" [--reply <id>]   |   hive buzz --read [--limit N]');
     const r = await postBuzz(seat, text, replyTo);
+    if (!r.ok) die(r.error);
+    break;
+  }
+  case 'handoff': {
+    const seat = loadSeat(flag('seat'));
+    const text = rest.join(' ');
+    if (!text) die('usage: hive handoff "<what you changed, what needs testing or integrating, and whether you were asked to commit and push>" [--seat <name>]');
+    const r = await postHandoff(seat, text);
     if (!r.ok) die(r.error);
     break;
   }

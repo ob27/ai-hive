@@ -10,6 +10,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { pidFile } from './seat.mjs';
 import { listenBuzz, readBuzz } from './transport.mjs';
+import { TASK_PROMPT } from './crew.mjs';
 
 export const CHAT_MARKER = '[Hive chat]';
 export const LISTEN_WAIT_SEC = 50;     // under Claude Code's default 60s hook timeout, so even hooks installed without our longer timeout can finish; the Hive's listening window (listenMs) is a little longer
@@ -115,7 +116,7 @@ export function noteListen(seat, quiet, waitSec = LISTEN_WAIT_SEC) {
 
 export const RESUME_MESSAGE = (minutes) => `Nobody has spoken in Hive Chat for about ${minutes} minute${minutes === 1 ? '' : 's'}. Stop listening now and go back to what you were doing before you were asked to listen. Do not run \`hive listen\` again unless someone asks you to.`;
 
-export const formatLine = (m) => `#${m.id} ${m.kind === 'system' ? `[${m.from}]` : m.kind === 'human' ? (m.from === 'Human' ? 'Human' : `${m.from} (human)`) : m.from}${m.quote ? ` (replying to #${m.quote.id})` : ''}: ${m.text}`;
+export const formatLine = (m) => `#${m.id} ${m.kind === 'system' ? `[${m.from}]` : m.kind === 'human' ? (m.from === 'Human' ? 'Human' : `${m.from} (human)`) : m.from}${m.quote ? ` (replying to #${m.quote.id})` : ''}: ${m.text}${m.task ? `\n${TASK_PROMPT(m.task)}` : ''}`;
 
 export function chatPrompt(lines, seatName) {
   const as = seatName ? ` --seat ${seatName}` : '';
@@ -152,6 +153,8 @@ export async function listenAtStop(seat, payload, { wait = LISTEN_WAIT() } = {})
   const r = await listenWithCursor(seat, wait);
   if (!r.ok || !r.messages.length) { clearChatLock(seat); return null; }
   writeCursor(seat, r.messages[r.messages.length - 1].id, r.epoch);
+  const task = r.messages.find((m) => m.task);
+  if (task) { clearChatLock(seat); return continuation(payload, `[Hive] ${TASK_PROMPT(task.task)}`); } // real work for the project (crew.mjs): not a chat reply, so the project is not locked
   writeFileSync(lockFile(seat), JSON.stringify({ at: Date.now(), turns: (lock?.turns ?? 0) + 1 }));
   return continuation(payload, chatPrompt(r.messages, seat.name));
 }

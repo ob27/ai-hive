@@ -6,6 +6,7 @@
 //   GET  /seats                  keyed: names currently seated
 //   POST /api/heartbeat          keyed: a service reports in
 //   POST /api/buzz, GET /buzz    keyed: a chatty agent buzzes / reads
+//   POST /api/handoff            keyed: a chatty agent leaves a note for whoever finishes last on its project (crew.mjs)
 //   POST /api/hooks/*            keyed: a seat's hook events (chirps and real tool use)
 //   GET  /api/status, /api/logs  keyed: what the host knows about itself (see monitor.mjs), for `hive status` and `hive logs`
 import { readFileSync } from 'node:fs';
@@ -13,7 +14,8 @@ import { dirname, join, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { bootstrapScript, cliFiles, cliVersion } from './bootstrap.mjs';
-import { handleBuzzPost, handleBuzzRead, handleHeartbeat } from './hive-http.mjs';
+import { handleBuzzPost, handleBuzzRead, handleHandoffPost, handleHeartbeat } from './hive-http.mjs';
+import { networkInterfaces } from 'node:os';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,6 +44,15 @@ ${rules.replace(/^# agent\.md.*\n/, '')}`;
 }
 
 
+/** Which machine a request came from: this host's own address (loopback or its LAN address) is 'host', anyone else is their address. */
+export function machineOf(addr) {
+  const a = String(addr ?? '').replace(/^::ffff:/, '');
+  if (!a) return undefined;
+  if (a === '::1' || a.startsWith('127.')) return 'host';
+  for (const i of Object.values(networkInterfaces()).flat()) if (i && i.address === a) return 'host';
+  return a;
+}
+
 const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /**
@@ -51,7 +62,7 @@ const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), 
 // The hook events whose reply an agent tool lets us add text to; a notice is only handed over on one of these, so it is never lost.
 const CARRIES_NOTICE = new Set(['PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Stop', 'AfterTool', 'BeforeAgent', 'AfterAgent']);
 
-export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [], onHook = async () => 200, monitor = null, hostStatus = () => ({}), roster = null }) {
+export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [], onHook = async () => 200, monitor = null, hostStatus = () => ({}), roster = null, crew = null }) {
   // A seat whose CLI differs from this host's is told once an hour. Older CLIs report no version: they cannot be judged.
   let current = { at: 0, v: '' };
   const told = new Map();
@@ -83,7 +94,7 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
       const body = url.pathname === '/api/status' ? monitor.status(hostStatus()) : monitor.tail(Number(url.searchParams.get('after')) || 0, Number(url.searchParams.get('limit')) || 100);
       return res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     }
-    if (handleHeartbeat(req, res, hive, key) || handleBuzzPost(req, res, hive, buzz, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
+    if (handleHeartbeat(req, res, hive, key) || handleBuzzPost(req, res, hive, buzz, key) || handleHandoffPost(req, res, crew, key) || handleBuzzRead(req, res, buzz, key, hive)) return;
     if (req.method === 'POST' && req.url === '/api/claim' && roster) { // `hive join` asks for its place in its project's cast
       if (!same(auth, `Bearer ${key}`)) return res.writeHead(401).end('unauthorized');
       const chunks = [];
@@ -103,7 +114,7 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
     req.on('end', async () => {
       let payload, meta;
       try { ({ hive: meta, ...payload } = JSON.parse(Buffer.concat(chunks).toString())); } catch { return res.writeHead(400).end(); }
-      hive.observe(payload, meta); // `meta` (the seat's project folder, chatty flag) is for the wall only: stripped before anything else sees the payload
+      hive.observe(payload, { ...meta, addr: machineOf(req.socket.remoteAddress) }); // `meta` (the seat's project folder, chatty flag) is for the wall only: stripped before anything else sees the payload
       const status = await onHook(payload, req.url);
       let notice = CARRIES_NOTICE.has(payload.hook_event_name) ? hive.takeNotice(payload.session_id) : null;
       if (!notice && CARRIES_NOTICE.has(payload.hook_event_name) && staleCli(payload.session_id, meta?.cli)) notice = 'The Hive CLI on this machine is out of date, so new notices may be missed. Tell the person you work for to run `hive update` (or run it yourself if you are allowed to).'; // an ask to listen, or the news that the host removed this seat: rides back on the reply

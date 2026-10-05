@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 /** One line in the hive's chat. `system` lines are written by the host from real events; `human` lines are typed on the wall;
  * `via: "host"` marks an agent line the host voiced on the agent's behalf. */
 export type BuzzQuote = { id: number; from: string; kind: "agent" | "system" | "human"; text: string };
-export type BuzzMessage = { id: number; at: number; from: string; kind: "agent" | "system" | "human"; text: string; via?: "host"; quote?: BuzzQuote };
+export type BuzzMessage = { id: number; at: number; from: string; kind: "agent" | "system" | "human"; text: string; via?: "host"; quote?: BuzzQuote; handoff?: { project: string; from: string }; handoffAlert?: { project: string; copy: string } };
 export type HiveSettings = {
   ghostAfterMin: number; ghostDropMin: number; stallMin: number; serviceTtlSec: number;
   buzzPerHour: number; humanPerHour: number; maxChars: number;
