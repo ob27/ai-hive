@@ -110,6 +110,25 @@ test('the chat thread shows senders, quotes, system lines and a working Reply', 
   await page.screenshot({ path: 'test-results/chat-thread.png' });
 });
 
+test('sub-agents show as a robot icon and count on their agent\'s card, with an explaining tooltip, and go away when they stop', async ({ page }) => {
+  await page.goto('/hive/');
+  await hive('join', ingest, 'Juno', '--key', key, '--claude');
+  const ev = (e) => hook('Juno', { session_id: 'Juno', ...e });
+  await ev({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } });
+  await expect(tile(page, 'Juno')).toBeVisible({ timeout: 10_000 });
+  const badge = page.locator('[data-rebar-part="helpers"]');
+  await expect(badge).toHaveCount(0);
+  await ev({ hook_event_name: 'SubagentStart', agent_id: 'h1', agent_type: 'Explore' });
+  await ev({ hook_event_name: 'SubagentStart', agent_id: 'h2', agent_type: 'Plan' });
+  await expect(badge).toHaveText('2', { timeout: 10_000 });
+  await expect(badge).toHaveAttribute('title', 'These are the sub-agents helping Juno.');
+  await page.screenshot({ path: 'test-results/helpers.png' });
+  await ev({ hook_event_name: 'SubagentStop', agent_id: 'h1' });
+  await expect(badge).toHaveText('1', { timeout: 10_000 });
+  await ev({ hook_event_name: 'SubagentStop', agent_id: 'h2' });
+  await expect(badge).toHaveCount(0, { timeout: 10_000 });
+});
+
 test('the Config page is reachable, switches theme, and the Join page renders', async ({ page }) => {
   await page.goto('/hive/config');
   await expect(page.getByLabel('Hive key')).toBeVisible();

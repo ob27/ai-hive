@@ -215,3 +215,25 @@ test('a very long service name is cut so it cannot ruin the card, and its id is 
   assert.equal(long.id, 'a-service-with-a-really-quite-long-identifier');
   assert.equal(s.snapshot().find((m) => m.id === 'short').name, 'DSL Service', 'runs of spaces are tidied too');
 });
+
+test('sub-agents helping an agent are counted from SubagentStart/Stop and their tool calls, and dropped when they go quiet', () => {
+  let t = 1_000_000;
+  const s = new HiveStore({ now: () => t });
+  const ev = (e) => s.observe({ session_id: 'S1', cwd: '/office/Mira', ...e }, { project: 'p' });
+  const mira = () => s.snapshot().find((m) => m.name === 'Mira');
+  ev({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } });
+  assert.equal(mira().helpers, undefined, 'no helpers: nothing to show');
+  ev({ hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'Explore' });
+  ev({ hook_event_name: 'SubagentStart', agent_id: 'a2', agent_type: 'Plan' });
+  assert.equal(mira().helpers, 2);
+  ev({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: 'x' }, agent_id: 'a3' }); // start missed: a tool call still proves it
+  assert.equal(mira().helpers, 3);
+  ev({ hook_event_name: 'SubagentStop', agent_id: 'a1' });
+  assert.equal(mira().helpers, 2);
+  t += 11 * 60_000; // a2 and a3 went quiet: dropped
+  ev({ hook_event_name: 'PostToolUse', tool_name: 'Bash' });
+  assert.equal(mira().helpers, undefined);
+  ev({ hook_event_name: 'SubagentStart', agent_id: 'b1' });
+  ev({ hook_event_name: 'SessionEnd' });
+  assert.equal(mira(), undefined, 'the seat leaving takes its helpers with it');
+});

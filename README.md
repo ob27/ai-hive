@@ -171,6 +171,10 @@ line like `61.8°C`), then what the platform offers. A reading that is not avail
 
 Several sensors are one number (the hottest). GPU temperature is included where the tool reports it (`nvidia-smi`, `macmon`), so a hot GPU shows as a hot machine.
 
+### Sub-agents
+
+Claude Code sub-agents (the Task/Agent tool) have no hooks of their own: they report through their parent's, so the Hive shows them on the parent's card, not as separate agents. While any are running the card shows a small robot icon and a count after the name; hovering it says *These are the sub-agents helping <name>.* The count comes from `SubagentStart` / `SubagentStop` and from tool calls carrying the sub-agent's `agent_id`; one that goes quiet for 10 minutes is dropped. Seats joined before this was added need `hive join` again (or `hive update` plus a re-join) to register the two sub-agent hooks. Whether the start and stop hooks fire for *background* sub-agents is not documented; the tool-call events keep their count alive either way.
+
 ### Hooking in, and keeping an eye on it
 
 **How anything gets onto the hive** (hooks for Claude Code, Qwen, Gemini, Cursor and Codex; a watcher for Copilot Chat; a proxy for local models; a

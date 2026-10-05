@@ -25,6 +25,7 @@ export const DEFAULTS = {
   focusMs: 60_000,             // before it has history, a working agent quiet this long is probably deep in something big ("Focusing"), not stuck
   focusMinMs: 30_000,          // however fast an agent usually reports, it is never called Focusing sooner than this
   listenMs: 60_000,            // a chatty agent that just finished its turn is still in the chat (the end-of-turn hook waits LISTEN_WAIT_SEC=50) this long
+  helperTtlMs: 10 * MIN,       // a sub-agent not heard from (no tool call, no stop) for this long is dropped: it crashed or its stop was missed
   chatGraceMs: 20_000,         // chat stays open this long after the last listener stopped listening, so a send is not lost to bad timing
   tickMs: 5_000,               // how often the stream re-checks for status changes that no event announced
 };
@@ -56,6 +57,13 @@ function isListening(a, now, cfg, probe) {
   if (probe && !a.sim) return probe(a.name);
   if (!a.stopped) return false;
   return a.listenFrom !== undefined && now - a.listenFrom < cfg.listenMs;
+}
+
+/** { helpers: n } while sub-agents are helping this agent (and drops any that went quiet for too long), else nothing. */
+function helperCount(a, now, c) {
+  if (!a.helpers?.size) return {};
+  for (const [id, at] of a.helpers) if (now - at > c.helperTtlMs) a.helpers.delete(id);
+  return a.helpers.size ? { helpers: a.helpers.size } : {};
 }
 
 /** What an idle or listening card says: "need anything else?" while it is in the chat, otherwise it has wandered off. */
@@ -91,6 +99,16 @@ export class HiveStore {
     this.probe = null;         // (name) => is that agent really sitting in the chat right now? (set by the host from the buzz log)
   }
 
+  /** Sub-agents helping this agent. They report through the parent's hooks: SubagentStart/Stop, and tool calls that carry the sub-agent's `agent_id`. */
+  trackHelper(a, payload, now) {
+    const ev = payload.hook_event_name, hid = typeof payload.agent_id === 'string' && payload.agent_id ? clip(payload.agent_id, 80) : null;
+    if (!hid) return;
+    a.helpers ??= new Map();
+    if (ev === 'SubagentStop') a.helpers.delete(hid);
+    else if (ev === 'SubagentStart' || ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(ev)) a.helpers.set(hid, now); // a tool call proves one is alive even when its start was missed
+    if (a.helpers.size > 50) a.helpers.delete(a.helpers.keys().next().value);
+  }
+
   /** A hook-shaped event from a seat ({session_id, hook_event_name, cwd, tool_name, tool_input}). `meta.project` is the seat's folder. */
   observe(payload, meta = {}) {
     const id = payload?.session_id;
@@ -117,12 +135,13 @@ export class HiveStore {
     if (!a.turn && ['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(payload.hook_event_name)) a.turn = { startAt: now, calls: [] }; // a turn begins with its first event
     if (payload.hook_event_name === 'PreToolUse') a.turn?.calls.push(toolClass(payload.tool_name, payload.tool_input));
     a.lastAt = now;
+    this.trackHelper(a, payload, now);
     switch (payload.hook_event_name) {
       case 'SessionStart': a.stopped = true; a.stoppedAt = now; a.listenFrom = undefined; a.pre = null; a.activity = undefined; break;
       case 'PreToolUse': a.stopped = false; a.listenFrom = undefined; a.lastListeningAt = undefined; /* working again: no grace */ a.activity = describe(payload.tool_name, payload.tool_input); a.pre = { at: now }; break;
       case 'PostToolUse': case 'PostToolUseFailure': a.stopped = false; a.pre = null; break;
       case 'Stop': a.stopped = true; a.stoppedAt = now; a.listenFrom = now; a.pre = null; a.activity = undefined; a.composing = undefined; if (!meta.joining) this.count(a, now); a.turn = null; break; // the turn is over: don't keep showing its last task ("responding to tom")
-      default: break; // Notification, SubagentStop…: proof of life only
+      default: break; // Notification, SubagentStart/Stop…: proof of life only (sub-agents are counted by trackHelper)
     }
     this.agents.set(id, a);
     this.emit();
@@ -303,7 +322,7 @@ export class HiveStore {
       }
       if (status === 'listening') a.lastListeningAt = now;
       const chatOpen = a.chatty === true && status !== 'ghost' && (status === 'listening' || (a.lastListeningAt !== undefined && now - a.lastListeningAt < c.chatGraceMs));
-      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: typing && status === 'active' ? pick(TYPING, `${a.id}:${typing.since}`).replace('{name}', a.name) : status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, chatOpen, modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
+      out.push({ id: a.id, kind: 'agent', name: a.name, project: a.project, status, statusLabel: label, statusReason: why, activity: typing && status === 'active' ? pick(TYPING, `${a.id}:${typing.since}`).replace('{name}', a.name) : status === 'idle' || status === 'listening' ? idleLine(a, now, c, this.probe) : a.activity, chatty: a.chatty === true, user: a.user, slot: a.slot, tools: a.hooks, chatOpen, ...helperCount(a, now, c), modelFamily: modelFamily(a.modelName, a.hooks), modelName: a.modelName, turns: a.sim || !this.ledger ? (a.turns ?? 0) : Math.round(this.ledger.get(a.slot ?? a.name) * 100) / 100, composing: a.composing && a.composing.until > now ? a.composing.to : undefined, reports: a.hooks === undefined ? undefined : a.hooks.length ? 'hooks' : 'chirps', updatedAt: a.lastAt });
     }
     for (const s of [...this.services.values()]) {
       const age = now - s.lastAt;
