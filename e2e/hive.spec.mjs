@@ -98,6 +98,18 @@ test('an agent that dies mid-listen does not stay Listening on the wall', async 
   await expect(page.getByText(/listening/i)).toHaveCount(0, { timeout: 20_000 });
 });
 
+test('the chat thread shows senders, quotes, system lines and a working Reply', async ({ page }) => {
+  await page.goto('/hive/');
+  await hive('join', ingest, 'Sage', '--key', key, '--chatty', '--claude');
+  await page.request.post('/hive/buzz', { data: { name: 'Tom', text: 'first line' } });
+  await expect(page.getByText('first line')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Tom · human')).toBeVisible();
+  await expect(page.getByText(/Sage joined the hive/)).toBeVisible(); // a system line, not a bubble
+  await page.getByRole('button', { name: 'Reply to Tom' }).click();
+  await expect(page.getByLabel('In reply to Tom').first()).toBeVisible(); // the quote chip above the chat box
+  await page.screenshot({ path: 'test-results/chat-thread.png' });
+});
+
 test('the Config page is reachable, switches theme, and the Join page renders', async ({ page }) => {
   await page.goto('/hive/config');
   await expect(page.getByLabel('Hive key')).toBeVisible();
