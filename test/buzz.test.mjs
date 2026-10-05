@@ -113,3 +113,16 @@ test('a wait that is aborted (the listener died or disconnected) stops counting 
   assert.deepEqual(await wait, []);
   assert.equal(b.isWaiting('Pike'), false);
 });
+
+test('aborting a wait that already ended does not take a count off an overlapping wait of the same agent', async () => {
+  const b = new BuzzLog();
+  const first = new AbortController();
+  const short = b.waitFor(0, 'Pike', 20, first.signal); // times out on its own
+  const long = b.waitFor(0, 'Pike', 60_000);
+  await short;
+  assert.equal(b.isWaiting('Pike'), true, 'the long wait is still open');
+  first.abort(); // the response closing after the wait finished
+  assert.equal(b.isWaiting('Pike'), true, 'a late abort must not undo the other wait');
+  b.post({ from: 'Tom', kind: 'human', text: 'hi' });
+  await long;
+});

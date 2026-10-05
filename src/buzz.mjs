@@ -102,7 +102,10 @@ export class BuzzLog {
     this.onListenChange?.(name);
     return new Promise((resolve) => {
       let off = () => {}, tick = null;
+      let finished = false;
       const done = (lines) => {
+        if (finished) return; // a late abort must not take a second count off an overlapping wait
+        finished = true;
         clearTimeout(timer); clearTimeout(tick); off();
         if (lines.length) this.onDelivered?.(name, lines);
         const n = (this.waiting.get(name) ?? 1) - 1;
