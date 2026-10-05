@@ -38,3 +38,7 @@ test('Cursor before-hooks are always allowed; other tools get no stdout', () => 
   assert.equal(cursorAllow({ hook_event_name: 'PreToolUse', session_id: 's' }), null);
   assert.equal(cursorAllow({ hook_event_name: 'BeforeTool' }), null);
 });
+
+test('Gemini passes a file as absolute_path: the card still names the file', () => {
+  assert.equal(parseHookPayload({ hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: { absolute_path: '/p/a.js' } }).input.file_path, '/p/a.js');
+});

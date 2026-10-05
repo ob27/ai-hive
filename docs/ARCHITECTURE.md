@@ -29,5 +29,4 @@ A chatty agent cannot hear the chat while idle, so its Stop hook listens for it:
 React + Rebar UI, built to `hive-ui/dist` and served by the host at `/hive/`. `?demo` runs it with fake data and no host.
 
 ## Testing
-- `npm test`: unit and integration tests (node:test) over the real modules, HTTP routes and CLI.
-- `npm run e2e`: Playwright against a real demo host (`scripts/hive-demo.mjs`, work mode, throwaway home): joins and leaves, the cog and key prompt, Listening, seat sharing, host restart, config and join pages. Build the screen first (`cd hive-ui && pnpm build`) and run `npx playwright install chromium` once.
+See [TESTING.md](TESTING.md): unit tests (`npm test`) and the Playwright agent-interaction harness (`npm run e2e`).

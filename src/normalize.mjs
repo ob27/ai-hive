@@ -20,6 +20,7 @@ const pre = (tool, input) => ({ type: 'pre', tool, input });
 
 // Qwen Code (a Gemini CLI fork) sends Claude-shaped events but Gemini-style snake_case tool ids (write_file…),
 // so Claude-shaped PreToolUse also goes through the name map. Some tools pass the path as absolute_path.
+const withFilePath = (input) => { const i = { ...(input ?? {}) }; const f = i.file_path ?? i.absolute_path ?? i.path; if (f !== undefined) i.file_path = f; return i; };
 const claudeShapedPre = (p) => {
   const input = { ...(p.tool_input ?? {}) };
   input.file_path ??= input.absolute_path ?? input.path;
@@ -38,7 +39,7 @@ export function parseHookPayload(raw) {
     case 'SessionStart': return { type: 'start' };
     case 'SessionEnd': return { type: 'end' };
     // Gemini CLI
-    case 'BeforeTool': return pre(GEMINI_TOOLS[p.tool_name] ?? 'Bash', GEMINI_TOOLS[p.tool_name] ? (p.tool_input ?? {}) : { command: p.tool_name ?? 'tool' });
+    case 'BeforeTool': return pre(GEMINI_TOOLS[p.tool_name] ?? 'Bash', GEMINI_TOOLS[p.tool_name] ? withFilePath(p.tool_input) : { command: p.tool_name ?? 'tool' }); // Gemini passes the path as absolute_path
     case 'AfterTool': return { type: 'post' };
     case 'BeforeAgent': return { type: 'prompt' };
     case 'AfterAgent': return { type: 'stop' };

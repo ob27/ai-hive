@@ -1,24 +1,15 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { defineConfig } from '@playwright/test';
 
-// A real demo host (work mode: only real agents) on spare ports, with its state and seats in a throwaway home.
-// Build the screen first: cd hive-ui && pnpm install && pnpm build
-const home = mkdtempSync(join(tmpdir(), 'hive-e2e-'));
-const env = { HOME: home, HIVE_HOME: join(home, '.workspace-office'), HIVE_DEMO_KEY: 'e2e-key' };
-Object.assign(process.env, { E2E_HOME: home, E2E_KEY: env.HIVE_DEMO_KEY, E2E_INGEST: '127.0.0.1:3292' });
-
+// No webServer here: each worker starts its own real hive (e2e/harness/hive.mjs) on free ports in a throwaway home, so spec files
+// run in parallel and nothing touches your real hive or any project's hook files.
+// Build the screen first: cd hive-ui && pnpm install && pnpm build        Browsers once: npx playwright install chromium
 export default defineConfig({
   testDir: 'e2e',
-  workers: 1,
-  timeout: 30_000,
-  use: { baseURL: 'http://127.0.0.1:3290' },
-  webServer: {
-    command: 'node scripts/hive-demo.mjs --port 3290 --ingest 3292 --work',
-    url: 'http://127.0.0.1:3290/hive/',
-    env,
-    reuseExistingServer: false,
-    timeout: 20_000,
-  },
+  testMatch: '**/*.spec.mjs',
+  fullyParallel: false,
+  workers: 3,
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  reporter: [['list']],
+  use: { trace: 'retain-on-failure', screenshot: 'only-on-failure' },
 });
