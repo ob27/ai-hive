@@ -96,6 +96,31 @@ test('boot takes the agent off the wall, ignores it from then on, and tells it o
   assert.equal(store.boot('nobody'), null);
 });
 
+test('a booted seat comes back under a fresh session id, with its name, while the old id stays ignored', () => {
+  const store = new HiveStore();
+  store.observe(ev('Dana', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }));
+  store.boot('s-Dana');
+  const back = (name, session_id) => ({ session_id, hook_event_name: 'PostToolUse', cwd: `/office/${name}`, tool_name: 'Bash', tool_input: { command: 'x' } });
+  store.observe(back('Dana', 's-Dana'));
+  assert.equal(find(store, 'Dana'), undefined, 'the old session id is still ignored');
+  store.observe(back('Dana', 's-Dana-fresh'));
+  assert.equal(find(store, 'Dana')?.status, 'active', 'the fresh one seats it again under the same name');
+});
+
+test('unboot lets a booted agent back under its own session id, and it is no longer listed as booted', () => {
+  const store = new HiveStore();
+  store.observe(ev('Dana', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }));
+  store.boot('s-Dana');
+  assert.deepEqual(store.bootedList(), [{ id: 's-Dana', name: 'Dana' }]);
+  assert.equal(store.unboot('nobody'), null);
+  assert.equal(store.unboot('s-Dana'), 'Dana');
+  assert.deepEqual(store.bootedList(), []);
+  assert.equal(find(store, 'Dana'), undefined, 'not back until its next event');
+  store.observe(ev('Dana', 'PostToolUse', { tool_name: 'Bash', tool_input: { command: 'x' } }));
+  assert.equal(find(store, 'Dana')?.status, 'active');
+  assert.equal(store.takeNotice('s-Dana'), null, 'nothing left to tell it');
+});
+
 const KEY = 'admin-key';
 const CLI = join(import.meta.dirname, '..', 'bin', 'office.mjs');
 let store, buzz, ingest, wall, ingestAddr, wallAddr, home;
@@ -142,6 +167,20 @@ test('boot removes the agent, and its next event brings it the news once and sea
   assert.equal(find(store, 'Tess'), undefined);
   const prod = await (await fetch(`http://${wallAddr}/hive/production`)).json();
   assert.equal(typeof prod.total, 'number');
+});
+
+test('a booted agent is listed, and "let back in" needs the key, says so in the thread, and seats it at its next event', async () => {
+  const listed = await (await fetch(`http://${wallAddr}/hive/booted`)).json();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].name, 'Tess');
+  const { id } = listed[0];
+  assert.equal((await admin({ action: 'unboot', id })).status, 401);
+  assert.equal((await admin({ action: 'unboot', id: 'ghost', key: KEY })).status, 404);
+  assert.equal((await admin({ action: 'unboot', id, key: KEY, by: 'tom' })).status, 204);
+  assert.deepEqual(await (await fetch(`http://${wallAddr}/hive/booted`)).json(), []);
+  assert.ok(buzz.list(5).some((l) => /Tess was let back into the hive by tom/.test(l.text)));
+  await run(['hook', '--seat', 'Tess'], { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' }, session_id: 'Tess', cwd: home });
+  assert.equal(find(store, 'Tess')?.status, 'active');
 });
 
 test('"responding to" names the person the agent works for: --user at join, else $HIVE_USER, else the machine\'s account name', async () => {

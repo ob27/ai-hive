@@ -19,7 +19,7 @@ const servers = [];
 const listen = (h) => new Promise((r) => { const s = http.createServer(h); s.listen(0, '127.0.0.1', () => { servers.push(s); r(s.address().port); }); });
 after(() => servers.forEach((s) => s.close()));
 
-let good, stale;
+let good, stale, goodStore;
 
 before(async () => {
   // A current host: the real handlers, a real built screen if there is one (the checks care that it answers).
@@ -36,6 +36,7 @@ before(async () => {
   const ingest = await listen(createIngest({ hive: store, buzz, key: KEY, monitor, defaultBase: () => 'x', hostStatus: () => describeHost({ hive: store, buzz, mode: modeCtl, uiDir: ui, ports: {}, info }) }));
   const screen = await listen((req, res) => { monitor.track(req, res, 'screen'); if (req.url === '/') return res.writeHead(302, { location: '/hive/' }).end(); if (handleJoinRedirect(req, res, ui) || handleMode(req, res, modeCtl, KEY) || handleHumanBuzz(req, res, buzz)) return; if (!handleHiveRead(req, res, store, ui, buzz, info)) res.writeHead(404).end(); });
   good = { ingest, screen };
+  goodStore = store;
   // An OLD host: answers every address with a web page (a catch-all web page), has /health and the old join page, and no Hive anything.
   stale = { ingest: await listen((req, res) => (req.url === '/health' ? res.end('ok') : res.writeHead(404).end())),
             screen: await listen((req, res) => (req.url.startsWith('/join-page') ? res.writeHead(200, { 'content-type': 'text/html' }).end('<title>Join the office</title>') : res.writeHead(200, { 'content-type': 'text/html' }).end('<title>Some other app</title>'))) };
@@ -96,4 +97,16 @@ test('the CLI: hive status exits non-zero and names the fix for an old host, zer
   const logs = await cli('logs', '--url', `127.0.0.1:${good.ingest}`, '--key', KEY);
   assert.equal(logs.status, 0, logs.err);
   assert.match(logs.out, /req\s+(screen|ingest) GET \/hive\/state -> 200/);
+});
+
+test('an agent the host booted is named, with how to let it back in, and the check clears once it is let back', async () => {
+  goodStore.observe({ session_id: 's3', hook_event_name: 'PreToolUse', cwd: '/office/Dana', tool_name: 'Bash', tool_input: { command: 'x' } }, { hooks: ['claude'] });
+  goodStore.boot('s3');
+  let r = await runChecks({ host: '127.0.0.1', ingest: good.ingest, screen: good.screen, key: KEY });
+  assert.equal(by(r, 'booted').state, 'warn');
+  assert.match(by(r, 'booted').detail, /Dana was booted/);
+  assert.ok(r.diagnosis.some((d) => /Dana: use "Let back in" on the wall, or run hive rebind/.test(d)));
+  goodStore.unboot('s3');
+  r = await runChecks({ host: '127.0.0.1', ingest: good.ingest, screen: good.screen, key: KEY });
+  assert.equal(by(r, 'booted'), undefined);
 });

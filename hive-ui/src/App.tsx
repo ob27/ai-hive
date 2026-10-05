@@ -9,6 +9,7 @@ import { ConfigPage } from "./ConfigPage";
 import { JoinPage } from "./JoinPage";
 import { HeatmapPage } from "./HeatmapPage";
 import { MemberDetails } from "./MemberDetails";
+import { BootedBar } from "./BootedBar";
 import { useBuzz } from "./buzz";
 import type { BuzzMessage } from "./buzz";
 import { readConfig, withQuery } from "./config";
@@ -154,3 +155,4 @@ export function App() {
     </div>
   );
 }
+            {demo ? null : <BootedBar />}

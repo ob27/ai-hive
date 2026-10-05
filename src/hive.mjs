@@ -211,6 +211,18 @@ export class HiveStore {
     return a;
   }
 
+  /** Agents the host removed and is still ignoring, for the wall's "Let back in". */
+  bootedList() { return [...this.booted].map(([id, b]) => ({ id, name: b.name })); }
+
+  /** The host lets a booted agent back in: its events count again, so it reappears on its next one. Returns its name, or null. */
+  unboot(id) {
+    const b = this.booted.get(id);
+    if (!b) return null;
+    this.booted.delete(id);
+    this.emit();
+    return b.name;
+  }
+
   /**
    * Ask a working agent to come and sit in Hive Chat when it reaches a stopping point (it runs `hive listen`, which shows as Listening). Reaches it on
    * its next hook event. { name, text }, null if it is gone, or { name, refused } with why it cannot be asked: not chatty, not working right now,
@@ -233,7 +245,7 @@ export class HiveStore {
     if (b) {
       if (!b.notice) return null;
       b.notice = false;
-      return 'The host removed you from the Hive. Stop reporting to it, and do not rejoin unless the person you work for asks you to.';
+      return 'The host removed you from the Hive. Stop reporting to it, and do not rejoin unless the person you work for asks you to. (They can let you back in from the Hive wall, or with `hive rebind <seat> --session <id> --fresh`.)';
     }
     const text = this.inbox.get(id);
     if (text) this.inbox.delete(id);

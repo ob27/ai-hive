@@ -100,6 +100,12 @@ export async function runChecks({ host, ingest = 3101, screen = 3100, key }) {
   const buzz = await get(`${S}/hive/buzz`);
   add('buzz', 'The buzz thread is served', buzz.ok && Array.isArray(buzz.json) ? OK : WARN, buzz.ok && Array.isArray(buzz.json) ? `${buzz.json.length} line${buzz.json.length === 1 ? '' : 's'}` : 'not available (an older host has no buzz)');
 
+  const booted = await get(`${S}/hive/booted`); // absent on an older host: then there is simply nothing to report
+  if (booted.ok && Array.isArray(booted.json) && booted.json.length) {
+    const names = booted.json.map((b) => b.name).join(', ');
+    add('booted', 'Nobody is booted from the hive', WARN, `${names} ${booted.json.length === 1 ? 'was' : 'were'} booted: the host ignores ${booted.json.length === 1 ? 'its' : 'their'} events, so ${booted.json.length === 1 ? 'it stays' : 'they stay'} off the wall`, `${names}: use "Let back in" on the wall, or run hive rebind <seat> --session <id> --fresh in that window's project.`);
+  }
+
   const join = await get(`${S}/join-page`, { redirect: 'manual' });
   if (join.ok && join.status === 302 && /\/hive\/join/.test(join.location ?? '')) add('join', 'The Join page', OK, '/join-page opens the Join page in the Hive screen');
   else if (join.ok && join.status === 200 && /Join the hive/.test(join.text)) add('join', 'The Join page', WARN, 'serves the plain fallback page (the screen is not built)', 'cd hive-ui && pnpm install && pnpm build');

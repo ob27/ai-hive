@@ -115,8 +115,12 @@ export function windows() {
 
 /** Puts a window (session id) back on a seat of its own choosing, e.g. when its agent vanished from the wall and the window
  *  was given another seat. Its next event reports as that seat again. */
-export function rebindSession(sid, seatName) {
-  loadSeat(seatName); // throws if there is no such seat
+export function rebindSession(sid, seatName, { fresh = false } = {}) {
+  const seat = loadSeat(seatName); // throws if there is no such seat
+  if (fresh) { // the host ignores a booted seat's session id until it rejoins as a new one: mint one
+    seat.sessionId = `office-${seat.name}-${randomBytes(4).toString('hex')}`;
+    writeFileSync(file(seat.name), JSON.stringify(seat, null, 2), { mode: 0o600 });
+  }
   writeBinding(sid, seatName);
 }
 

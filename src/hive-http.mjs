@@ -261,6 +261,7 @@ export function handleHiveRead(req, res, store, uiDir, buzz = null, info = {}) {
   if (path === '/hive') { res.writeHead(302, { location: '/hive/' }).end(); return true; }
   if (!path.startsWith('/hive/')) return false;
   if (path === '/hive/state') { json(res, 200, store.snapshot()); return true; }
+  if (path === '/hive/booted') { json(res, 200, store.bootedList()); return true; }
   if (path === '/hive/stream') { sse(req, res, store); return true; }
   if (path === '/hive/production') { json(res, 200, store.production()); return true; }
   if (path === '/hive/production-days') { json(res, 200, store.productionDays()); return true; }
@@ -284,9 +285,10 @@ export function handleHiveRead(req, res, store, uiDir, buzz = null, info = {}) {
 }
 
 /**
- * POST /hive/admin { action: 'boot' | 'listen', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
+ * POST /hive/admin { action: 'boot' | 'unboot' | 'listen', id, key, by? }: what the cog on an agent's details does. These act on someone else's seat, so they need the
  * hive key (the same one agents join with); the wall asks for it once.
  *   boot  take the agent off the wall; its events are ignored until it rejoins, and it is told once, on its next event, that it was removed.
+ *   unboot  let a booted agent back in (id from GET /hive/booted): its events count again, so it is back on the wall at its next one.
  *   listen  ask a working, chatty agent to come and sit in the chat when it reaches a stopping point (it runs `hive listen`).
  */
 export function handleAdmin(req, res, { hive, buzz, key }) {
@@ -301,6 +303,12 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       buzz?.post({ from: 'hive', kind: 'system', text: `${a.name} was booted from the hive by ${by}.` });
       return void res.writeHead(204).end();
     }
+    if (body.action === 'unboot') {
+      const name = hive.unboot(body.id);
+      if (!name) return json(res, 404, { error: 'that agent is not booted' });
+      buzz?.post({ from: 'hive', kind: 'system', text: `${name} was let back into the hive by ${by}.` });
+      return void res.writeHead(204).end();
+    }
     if (body.action === 'listen') {
       const t = hive.askToListen(body.id, by);
       if (!t) return json(res, 404, { error: 'that agent is not on the wall any more' });
@@ -308,7 +316,7 @@ export function handleAdmin(req, res, { hive, buzz, key }) {
       buzz?.post({ from: 'hive', kind: 'system', text: `${by} asked ${t.name} to listen.` });
       return void res.writeHead(204).end();
     }
-    json(res, 400, { error: 'action must be boot or listen' });
+    json(res, 400, { error: 'action must be boot, unboot or listen' });
   });
   return true;
 }

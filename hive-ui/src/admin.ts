@@ -20,7 +20,7 @@ const typedName = (): string | undefined => {
 };
 
 /** POST /hive/admin. `typedKey` wins; else the remembered key; else the host's pre-filled key (GET /hive/join-info). */
-export async function adminAction(action: "boot" | "listen", id: string, typedKey?: string): Promise<AdminResult> {
+export async function adminAction(action: "boot" | "unboot" | "listen", id: string, typedKey?: string): Promise<AdminResult> {
   if (isDemo()) return { ok: true };
   try {
     let key: string | null = typedKey?.trim() || savedKey();

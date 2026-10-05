@@ -57,7 +57,8 @@ const HELP = `hive — join the AI Hive. (The older \`office\` command still wor
                                                               would, says what is wrong and what to do, and (with the key) asks the host
                                                               how it is doing. Works against old hosts too. Exit 1 if anything fails.
   hive logs [--url …] [--key K] [--follow] [--limit 100]      the host's recent requests, errors and console output (needs a current host)
-  hive rebind <seat> --session <id>                         put a chat whose agent vanished back on its seat (no args: list the windows)
+  hive rebind <seat> --session <id> [--fresh]               put a chat whose agent vanished back on its seat (no args: list the windows);
+                                                              --fresh gives the seat a new session id, for one the host booted
   hive leave                                                stand up
   hive install                                              put office on your PATH (join does this for you)
   hive update [--seat <name>]                               fetch the host's current CLI (your hooks run the copy under ~/.workspace-office/cli, which
@@ -207,7 +208,6 @@ switch (cmd) {
   }
   case 'respond': { const seat = loadSeat(flag('seat')); process.exit((await chirp(seat, `responding to ${rest.join(' ') || 'you'}`, { tool: 'Bash' })) ? 0 : 1); break; }
   case 'idle': await idle(loadSeat(flag('seat'))); break;
-  case 'update': {
   case 'import-history': {
     // One-off: re-score the history this machine's agent tools kept, so the production heatmap has a past (see src/history-import.mjs).
     const want = (flag('tool') ?? 'all').split(',').map((x) => x.trim()).filter(Boolean);
@@ -233,6 +233,7 @@ switch (cmd) {
     console.log('Running it again replaces these imports, it never adds to them. Days from when the Hive began dating production live are left as recorded.');
     break;
   }
+  case 'update': {
     // Your hooks run the CLI copy installed under ~/.workspace-office/cli, and only `join` refreshes it. Fetch the host's current one.
     const seat = loadSeat(flag('seat'));
     const into = flag('into') ?? cliDir;
@@ -423,7 +424,7 @@ switch (cmd) {
       for (const w of windows()) console.log(`  ${w.sid}  ${w.seat}  ${Math.round((Date.now() - w.at) / 60000)} min ago`);
       process.exit(name || sid ? 1 : 0);
     }
-    try { rebindSession(sid, name); } catch { die(`no seat called ${name}`); }
+    try { rebindSession(sid, name, { fresh: bool('fresh') }); } catch { die(`no seat called ${name}`); }
     console.log(`That window now speaks as ${name}; it shows on the wall from its next action.`);
     break;
   }
