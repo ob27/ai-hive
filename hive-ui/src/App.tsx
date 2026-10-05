@@ -12,7 +12,7 @@ import { MemberDetails } from "./MemberDetails";
 import { BootedBar } from "./BootedBar";
 import { useBuzz } from "./buzz";
 import type { BuzzMessage } from "./buzz";
-import { readConfig, withQuery } from "./config";
+import { readConfig, withQuery, writeConfig } from "./config";
 import type { HiveConfig } from "./config";
 import { chatAvailable, forWall, useHive, useProduction } from "./hive";
 
@@ -64,6 +64,24 @@ export function App() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, [cfg.theme]);
+
+  // The nav's theme toggle only flips <html data-theme>, which dies with the page: every other page (the heatmap, Config, Join) is a fresh load that
+  // would go back to the saved preference. So when the toggle changes the theme, save it as the preference, like picking it on the Config page.
+  useEffect(() => {
+    const el = document.documentElement;
+    const obs = new MutationObserver(() => {
+      const now: "light" | "dark" = el.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      setSaved((prev) => {
+        const resolved = prev.theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : prev.theme;
+        if (now === resolved) return prev; // our own applyTheme, or no change
+        const next = { ...prev, theme: now };
+        writeConfig(next);
+        return next;
+      });
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
 
   // Mark the nav link for the page we are on (the header block does not), so it can be styled as the current one.
   useEffect(() => {

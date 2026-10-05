@@ -16,6 +16,7 @@ test('the wall loads without errors, the bee logos render, and it starts empty i
 });
 
 test('the chat thread shows senders, system lines and a working Reply that quotes', async ({ hive, wall }) => {
+  await new ClaudeAgent(hive, 'Seed').join(); // the host treats the very first change as the baseline, so it announces nobody
   await new ClaudeAgent(hive, 'Sage', { chatty: true }).join();
   await hive.say('first line', 'Tom');
   await expect(wall.thread().getByText('first line')).toBeVisible();
@@ -57,4 +58,25 @@ test('the Config page switches theme and the Join page renders', async ({ page, 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.goto(`${hive.base}/hive/join`);
   await expect(page.getByRole('heading', { name: 'Join the hive' })).toBeVisible();
+});
+
+test('the theme chosen with the nav toggle survives moving between pages and reloads', async ({ page, hive }) => {
+  await page.emulateMedia({ colorScheme: 'dark' }); // the OS is dark: "system" would be dark
+  const dark = async () => (await page.locator('html').getAttribute('data-theme')) === 'dark';
+  await page.goto(`${hive.base}/hive/`);
+  expect(await dark()).toBe(true);
+  await page.getByRole('switch', { name: /dark mode/i }).click(); // to light
+  await expect.poll(dark).toBe(false);
+  await page.getByRole('link', { name: 'Join this Hive' }).click(); // a full page load
+  await expect(page).toHaveURL(/\/hive\/join$/);
+  expect(await dark(), 'still light on the next page').toBe(false);
+  await page.goto(`${hive.base}/hive/heatmap`);
+  expect(await dark(), 'still light on the heatmap page').toBe(false);
+  await page.reload();
+  expect(await dark(), 'and after a reload').toBe(false);
+  await page.getByRole('switch', { name: /dark mode/i }).click(); // back to dark
+  await expect.poll(dark).toBe(true);
+  await page.getByRole('link', { name: 'Config' }).click();
+  expect(await dark(), 'dark carries to the Config page too').toBe(true);
+  await expect(page.getByRole('radio', { name: 'Dark' })).toBeChecked(); // and the Config page shows it as the chosen theme
 });
