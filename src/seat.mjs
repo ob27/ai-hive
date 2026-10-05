@@ -59,24 +59,37 @@ function bindings() {
 }
 
 /** The seat this window (session id) speaks as: the one it is already bound to, else a free seat of this folder's project
- *  (the one named in the hook command if it is free), else that named seat shared. */
+ *  (the one named in the hook command if it is free), else that named seat shared. Two windows starting at the same instant can
+ *  both see one seat free, so after claiming it the claim is checked: of two windows on one seat the earlier binding keeps it. */
 export function seatForSession(sid, project, preferred) {
   const seatNames = () => { try { return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)); } catch { return []; } };
   const load = (n) => { try { return JSON.parse(readFileSync(file(n), 'utf8')); } catch { return null; } };
   const mine = sid ? bindings().find((b) => b.sid === sid) : null;
   const bound = mine && load(mine.seat);
   if (bound) { writeBinding(sid, bound.name); return bound; }
-  const taken = new Set(bindings().filter((b) => b.sid !== sid).map((b) => b.seat));
   const fallback = load(preferred ?? '') ?? loadSeat(preferred);
-  const free = [preferred, ...seatNames()].map((n) => n && load(n)).filter((s) => s && s.project === fallback.project && s.hooks?.includes('claude') && !taken.has(s.name));
-  const seat = free[0] ?? fallback;
-  if (sid) writeBinding(sid, seat.name);
-  return seat;
+  const lost = new Set(); // seats another window beat us to
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const taken = new Set([...bindings().filter((b) => b.sid !== sid).map((b) => b.seat), ...lost]);
+    const free = [preferred, ...seatNames()].map((n) => n && load(n)).filter((s) => s && s.project === fallback.project && s.hooks?.includes('claude') && !taken.has(s.name));
+    const seat = free[0];
+    if (!seat) break;
+    if (!sid) return seat;
+    const at = writeBinding(sid, seat.name);
+    const rival = bindings().find((b) => b.sid !== sid && b.seat === seat.name && (b.at < at || (b.at === at && b.sid < sid)));
+    if (!rival) return seat;
+    rmSync(bindFile(sid), { force: true }); // it was theirs first: look again without it
+    lost.add(seat.name);
+  }
+  if (sid) writeBinding(sid, fallback.name); // no free seat: share the named one
+  return fallback;
 }
 
 function writeBinding(sid, seat) {
   mkdirSync(bindDir, { recursive: true });
-  writeFileSync(bindFile(sid), JSON.stringify({ sid, seat, at: Date.now() }));
+  const at = Date.now();
+  writeFileSync(bindFile(sid), JSON.stringify({ sid, seat, at }));
+  return at;
 }
 
 /** A window closed. True when its seat is now empty (no other window speaks as it), so the seat may leave. */

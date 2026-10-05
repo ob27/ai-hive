@@ -17,6 +17,8 @@ Each Playwright worker starts its own real host (`hive host`: routes, store, ing
 | `chat.spec.mjs` | Hive Chat: people, host-voiced bots (quoting, "voiced by host", typing card, never bot-to-bot, model down = quiet), real agents answering through the Stop hook and `hive buzz --reply`, agent-to-agent invites, refused replies, the Bee, nobody-listening, the 12-turn runaway guard |
 | `handoff.spec.mjs` | Crew handoff: awareness, asking the first finisher for a note, handing notes to the last, a free helper asked by name, the not-picked-up alert with its Copy button |
 | `limits.spec.mjs` | Per-agent and per-person hourly caps, the bots' reply budget (tight limits, so each test gets a fresh host) |
+| `states.spec.mjs` | Time-based states with shortened clocks: Focusing, Stalled and recovery, Idle to Ghost to dropped, a ghost reporting again, a service that stops heartbeating (Not responding) |
+| `wrappers.spec.mjs` | Hook-less agents: `hive run` (output means working, exit code passed on) and `hive proxy` (thinking, then the tool called, then idle) |
 | `services.spec.mjs` | Heartbeat states, metric rules, gauges, refusal of per-core lists |
 | `ui.spec.mjs` | The screen: logos, chat thread, reply quotes, the cog's key prompt, config and join pages |
 
@@ -27,4 +29,4 @@ The host reads `HIVE_TUNING` (a JSON object `{ hive, buzz, crew, bee, responder 
 Write an adapter class in `agents.mjs` with `join`, `prompt`, `work`, `idle`, `leave` and an `activity` pattern, and add it to `ADAPTERS` in `matrix.spec.mjs`. It then gets the whole journey for free. Add anything tool-specific to its own spec.
 
 ### Not covered yet
-The `hive proxy` and `hive run` wrappers (unit-tested in `test/adapters.test.mjs`, not driven through the screen), time-based states (Stalled, Ghost: they need a clock the host does not expose), and real tools (the harness fakes their payloads; the real apps have to be tried by hand).
+Real tools (the harness fakes their payloads; the real apps have to be tried by hand, and a change in a tool's hook format would not show here), and a real model behind the bots (a stub stands in). Background sub-agents are only covered by the tool-call path, because it is undocumented whether their start/stop hooks fire.
