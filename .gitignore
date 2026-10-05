@@ -6,6 +6,7 @@ node_modules/
 .qwen/
 .gemini/
 .cursor/
-# (hive-ui/dist, the built screen, IS committed: a host needs no UI toolchain. Rebuild it after changing hive-ui/src; test/ui-built.test.mjs checks.)
+# The built screen: build it yourself (see README, "Build the screen")
+hive-ui/dist/
 test-results/
 playwright-report/

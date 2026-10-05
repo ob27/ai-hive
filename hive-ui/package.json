@@ -6,7 +6,7 @@
   "description": "The Hive wall screen: Rebar UI's AgentWall fed by the ai-hive host. Linked to a sibling rebarui checkout so the component can be tuned against live data.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node ../scripts/stamp-ui.mjs",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

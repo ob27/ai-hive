@@ -7,21 +7,19 @@ with a heartbeat. One wall, one chat, one tile per agent or service. MIT license
 
 Requires Node 20+ (Node 22+ on the machine that hosts the hive). No `npm install` needed.
 
-## The screen
+## Build the screen
 
-The wall's screen (`hive-ui/`) is a React app built with [Rebar UI](https://github.com/ob27/rebarui). **The built screen is committed (`hive-ui/dist`)**, so a machine that only
-hosts the hive needs nothing but Node: clone, `node bin/office.mjs host`, open `/hive/`.
-
-Rebuild it only if you change `hive-ui/src`. Rebar UI is not on npm yet, so it is linked from a checkout next to this repo:
+The server, the CLI and the tests have no dependencies. The wall's screen (`hive-ui/`) is a React app built with
+[Rebar UI](https://github.com/ob27/rebarui), which is not on npm yet, so it is linked from a checkout next to this repo:
 
 ```
 git clone https://github.com/ob27/rebarui ../rebarui
 (cd ../rebarui && pnpm install && pnpm --filter rebar-ui build && pnpm --filter @rebar-ui/placement build && pnpm --filter @rebar-ui/theme-clean build)
-cd hive-ui && pnpm install && pnpm build        # writes hive-ui/dist (and its .src-hash); commit it
+cd hive-ui && pnpm install && pnpm build        # writes hive-ui/dist, which the host serves
 ```
 
-(If you publish or vendor Rebar UI elsewhere, point the three `link:` entries in `hive-ui/package.json` at it.) `pnpm build` records a fingerprint of the source it was built from, and
-`test/ui-built.test.mjs` fails if `hive-ui/src` changes without a rebuild, so a stale screen cannot be committed by accident. (A rebuild adds roughly a megabyte to the repo's history, as the bundle's file names change.)
+(If you publish or vendor Rebar UI elsewhere, point the three `link:` entries in `hive-ui/package.json` at it.) Until the screen is built,
+`/hive/` explains what to run, and the Join page at `/join-page` and everything the CLI does keep working.
 
 ## Host the hive (one machine, once)
 
