@@ -77,3 +77,15 @@ test('a real CLI joins as chatty, appears on the wall, and can buzz', async () =
   assert.equal((await cli(home, 'leave', '--seat', 'Nina')).status, 0);
   assert.equal(store.snapshot().some((m) => m.name === 'Nina'), false);
 });
+
+test('a seat whose CLI differs from the host\'s is told to run hive update, once; a current or unversioned CLI hears nothing', async () => {
+  const { cliVersion } = await import('../src/bootstrap.mjs');
+  const post = async (sid, cliV) => {
+    const r = await fetch(`http://${addr}/api/hooks/claude`, { method: 'POST', headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ hook_event_name: 'Stop', session_id: sid, cwd: '/office/Old', hive: { project: 'p', ...(cliV ? { cli: cliV } : {}) } }) });
+    return r.headers.get('content-type')?.includes('json') ? (await r.json()).notice : undefined;
+  };
+  assert.match(await post('old1', 'deadbeef0000'), /hive update/);
+  assert.equal(await post('old1', 'deadbeef0000'), undefined, 'only once');
+  assert.equal(await post('cur1', cliVersion()), undefined);
+  assert.equal(await post('legacy1'), undefined);
+});

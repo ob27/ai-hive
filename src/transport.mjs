@@ -1,5 +1,6 @@
 // One POST per event to the hive's ingest. Never throws into the caller's agent loop:
 // a down office server must not break the agent doing real work.
+import { cliVersion } from './bootstrap.mjs';
 let pendingNotice = null;
 /** What the host sent back on the last event, if anything for the agent to read (a request to listen, or news that it was removed). Taken once. */
 export function takePendingNotice() { const n = pendingNotice; pendingNotice = null; return n; }
@@ -10,7 +11,7 @@ export async function send(seat, payload, { quiet = true, joining = false } = {}
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${seat.token}` },
       // `hive.project` is for the Hive wall only; the host reads it and does not pass it on.
-      body: JSON.stringify(seat.project ? { ...payload, hive: { project: seat.project, chatty: seat.chatty === true, ...(seat.model ? { model: seat.model } : {}), ...(seat.user ? { user: seat.user } : {}), ...(seat.slot ? { slot: seat.slot } : {}), ...(joining ? { joining: true } : {}), ...(Array.isArray(seat.hooks) ? { hooks: seat.hooks } : {}) } } : payload),
+      body: JSON.stringify(seat.project ? { ...payload, hive: { project: seat.project, chatty: seat.chatty === true, ...(seat.model ? { model: seat.model } : {}), ...(seat.user ? { user: seat.user } : {}), ...(seat.slot ? { slot: seat.slot } : {}), ...(joining ? { joining: true } : {}), cli: cliVersion(), ...(Array.isArray(seat.hooks) ? { hooks: seat.hooks } : {}) } } : payload),
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) throw new Error(`office server answered ${res.status}`);

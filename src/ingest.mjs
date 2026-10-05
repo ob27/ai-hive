@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { bootstrapScript, cliFiles } from './bootstrap.mjs';
+import { bootstrapScript, cliFiles, cliVersion } from './bootstrap.mjs';
 import { handleBuzzPost, handleBuzzRead, handleHeartbeat } from './hive-http.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,6 +52,16 @@ const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), 
 const CARRIES_NOTICE = new Set(['PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Stop', 'AfterTool', 'BeforeAgent', 'AfterAgent']);
 
 export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [], onHook = async () => 200, monitor = null, hostStatus = () => ({}), roster = null }) {
+  // A seat whose CLI differs from this host's is told once an hour. Older CLIs report no version: they cannot be judged.
+  let current = { at: 0, v: '' };
+  const told = new Map();
+  const staleCli = (sid, seen) => {
+    if (typeof seen !== 'string') return false;
+    if (Date.now() - current.at > 30_000) current = { at: Date.now(), v: cliVersion() };
+    if (seen === current.v || Date.now() - (told.get(sid) ?? 0) < 3600_000) return false;
+    told.set(sid, Date.now());
+    return true;
+  };
   return (req, res) => {
     monitor?.track(req, res, 'ingest');
     if (req.method === 'GET' && req.url === '/health') return res.end('ok');
@@ -95,7 +105,8 @@ export function createIngest({ hive, buzz, key, defaultBase, seatNames = () => [
       try { ({ hive: meta, ...payload } = JSON.parse(Buffer.concat(chunks).toString())); } catch { return res.writeHead(400).end(); }
       hive.observe(payload, meta); // `meta` (the seat's project folder, chatty flag) is for the wall only: stripped before anything else sees the payload
       const status = await onHook(payload, req.url);
-      const notice = CARRIES_NOTICE.has(payload.hook_event_name) ? hive.takeNotice(payload.session_id) : null; // an ask to listen, or the news that the host removed this seat: rides back on the reply
+      let notice = CARRIES_NOTICE.has(payload.hook_event_name) ? hive.takeNotice(payload.session_id) : null;
+      if (!notice && CARRIES_NOTICE.has(payload.hook_event_name) && staleCli(payload.session_id, meta?.cli)) notice = 'The Hive CLI on this machine is out of date, so new notices may be missed. Tell the person you work for to run `hive update` (or run it yourself if you are allowed to).'; // an ask to listen, or the news that the host removed this seat: rides back on the reply
       if (notice) return res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ notice }));
       res.writeHead(status).end();
     });

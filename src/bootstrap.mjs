@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,4 +41,11 @@ export function bootstrapScript(base) {
   process.exit(cp.spawnSync(process.execPath, [entry, ...args], { stdio: 'inherit' }).status ?? 1);
 })();
 `;
+}
+
+/** A fingerprint of the CLI files in this checkout (or installed copy): the host compares the one a seat reports with its own. */
+export function cliVersion(files = cliFiles()) {
+  const h = createHash('sha1');
+  for (const k of Object.keys(files).sort()) h.update(k).update(files[k]);
+  return h.digest('hex').slice(0, 12);
 }
