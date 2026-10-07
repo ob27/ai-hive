@@ -10,3 +10,15 @@ node_modules/
 hive-ui/dist/
 test-results/
 playwright-report/
+
+# Standard ignores (dependencies, build output, caches, logs, local env)
+.env
+.env.local
+dist/
+build/
+.firebase/
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.tsbuildinfo
